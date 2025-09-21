@@ -1,5 +1,7 @@
 # DealMaster React Native App
 
+[![CI status](https://github.com/<OWNER>/<REPO>/actions/workflows/ci.yml/badge.svg)](https://github.com/<OWNER>/<REPO>/actions/workflows/ci.yml)
+
 A React Native starter project bootstrapped with TypeScript that showcases a simple authentication flow powered by Zustand and Axios. The application includes Login, Home, and Settings screens connected with React Navigation.
 
 ## Features
