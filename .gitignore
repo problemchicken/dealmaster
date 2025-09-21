@@ -1,0 +1,25 @@
+# Dependencies
+/node_modules
+
+# React Native
+/android
+/ios
+/expo
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Metro
+.expo
+.expo-shared
+
+# macOS
+.DS_Store
+
+# Visual Studio Code
+.vscode/
+
+# Environment files
+.env
