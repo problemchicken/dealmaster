@@ -25,11 +25,19 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
   function getVariableName(node) {
     if (t.isMemberExpression(node) || t.isOptionalMemberExpression(node)) {
       const {property, computed} = node;
-      if (computed) {
-        return null;
-      }
-      if (t.isIdentifier(property)) {
+      if (!computed && t.isIdentifier(property)) {
         return property.name;
+      }
+      if (computed && t.isStringLiteral(property)) {
+        return property.value;
+      }
+      if (
+        computed &&
+        t.isTemplateLiteral(property) &&
+        property.expressions.length === 0 &&
+        property.quasis.length === 1
+      ) {
+        return property.quasis[0].value.cooked;
       }
     }
     return null;
@@ -46,6 +54,10 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
   }
 
   function inlinePath(path, state) {
+    if (!path.isReferenced()) {
+      return;
+    }
+
     const node = path.node;
     if (!isProcessEnv(node.object)) {
       return;
