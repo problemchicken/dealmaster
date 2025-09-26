@@ -49,7 +49,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
       </View>
       <FlatList
         data={deals}
-        keyExtractor={item => item.id}
+        keyExtractor={(item: Deal) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         refreshControl={
