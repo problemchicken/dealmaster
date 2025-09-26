@@ -35,7 +35,7 @@ describe('inline environment variables plugin', () => {
       pluginOptions,
     );
     expect(output).toBe(
-      'if (typeof "https://example.com" !== "undefined") { console.log("https://example.com"); }',
+      'if (typeof "https://example.com" !== "undefined") {\n  console.log("https://example.com");\n}',
     );
   });
 
@@ -55,7 +55,7 @@ describe('inline environment variables plugin', () => {
       pluginOptions,
     );
     expect(output).toBe(
-      'const { API_URL } = { API_URL: "https://example.com" };\nconsole.log(API_URL);',
+      'const { API_URL } = {\n  API_URL: "https://example.com"\n};\nconsole.log(API_URL);',
     );
   });
 
@@ -65,7 +65,7 @@ describe('inline environment variables plugin', () => {
       pluginOptions,
     );
     expect(output).toBe(
-      'const { API_URL: baseUrl } = { API_URL: "https://example.com" };\nconsole.log(baseUrl);',
+      'const { API_URL: baseUrl } = {\n  API_URL: "https://example.com"\n};\nconsole.log(baseUrl);',
     );
   });
 
