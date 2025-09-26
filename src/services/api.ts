@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, {AxiosRequestConfig} from 'axios';
 import {useAuthStore} from '../store/useAuthStore';
 
 declare const process: {
@@ -17,7 +17,7 @@ export const api = axios.create({
   timeout: 5000,
 });
 
-api.interceptors.request.use(config => {
+api.interceptors.request.use((config: AxiosRequestConfig) => {
   const token = useAuthStore.getState().token;
   if (token) {
     config.headers = {

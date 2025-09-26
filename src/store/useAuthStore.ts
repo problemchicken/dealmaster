@@ -7,9 +7,16 @@ export type AuthState = {
   logout: () => void;
 };
 
-export const useAuthStore = create<AuthState>(set => ({
+type AuthStateSetter = (
+  partial:
+    | AuthState
+    | Partial<AuthState>
+    | ((state: AuthState) => AuthState | Partial<AuthState>),
+) => void;
+
+export const useAuthStore = create<AuthState>((set: AuthStateSetter) => ({
   isAuthenticated: false,
   token: null,
-  login: token => set({isAuthenticated: true, token}),
+  login: (token: string) => set({isAuthenticated: true, token}),
   logout: () => set({isAuthenticated: false, token: null}),
 }));

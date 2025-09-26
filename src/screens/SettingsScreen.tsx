@@ -1,7 +1,7 @@
 import React, {useState} from 'react';
 import {SafeAreaView, ScrollView, StyleSheet, Switch, Text, View} from 'react-native';
 import {colors} from '../theme/colors';
-import {useAuthStore} from '../store/useAuthStore';
+import {useAuthStore, AuthState} from '../store/useAuthStore';
 import PrimaryButton from '../components/PrimaryButton';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
@@ -9,7 +9,7 @@ import {RootStackParamList} from '../navigation/types';
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
 const SettingsScreen: React.FC<Props> = ({navigation}) => {
-  const logout = useAuthStore(state => state.logout);
+  const logout = useAuthStore((state: AuthState) => state.logout);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
 

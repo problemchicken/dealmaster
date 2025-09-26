@@ -11,11 +11,11 @@ import {
 } from 'react-native';
 import PrimaryButton from '../components/PrimaryButton';
 import {colors} from '../theme/colors';
-import {useAuthStore} from '../store/useAuthStore';
+import {useAuthStore, AuthState} from '../store/useAuthStore';
 import {loginRequest} from '../services/api';
 
 const LoginScreen: React.FC = () => {
-  const login = useAuthStore(state => state.login);
+  const login = useAuthStore((state: AuthState) => state.login);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
