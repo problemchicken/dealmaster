@@ -68,4 +68,21 @@ describe('inline environment variables plugin', () => {
       'const { API_URL: baseUrl } = { API_URL: "https://example.com" };\nconsole.log(baseUrl);',
     );
   });
+
+  it('allows regular expressions in the include option', () => {
+    const output = transform('const url = process.env.API_URL;', {
+      include: [/^API_/],
+      env: {API_URL: 'https://example.com'},
+    });
+    expect(output).toBe('const url = "https://example.com";');
+  });
+
+  it('respects regular expression exclusions', () => {
+    const output = transform('const url = process.env.API_URL;', {
+      include: [/^API_/],
+      exclude: [/^API_/],
+      env: {API_URL: 'https://example.com'},
+    });
+    expect(output).toBe('const url = process.env.API_URL;');
+  });
 });

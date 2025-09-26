@@ -22,6 +22,23 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
     return Array.isArray(option) ? option : [option];
   }
 
+  function matchesOption(variableName, option) {
+    if (!option) {
+      return false;
+    }
+
+    if (typeof option === 'string') {
+      return option === variableName;
+    }
+
+    if (option instanceof RegExp) {
+      option.lastIndex = 0;
+      return option.test(variableName);
+    }
+
+    return false;
+  }
+
   function getSourceEnv(state) {
     const {opts} = state;
     if (opts && opts.env && typeof opts.env === 'object') {
@@ -34,11 +51,15 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
     const include = toArray(state.opts && state.opts.include);
     const exclude = toArray(state.opts && state.opts.exclude);
 
-    if (include && include.length > 0 && !include.includes(variableName)) {
+    if (
+      include &&
+      include.length > 0 &&
+      !include.some(option => matchesOption(variableName, option))
+    ) {
       return false;
     }
 
-    if (exclude && exclude.includes(variableName)) {
+    if (exclude && exclude.some(option => matchesOption(variableName, option))) {
       return false;
     }
 
