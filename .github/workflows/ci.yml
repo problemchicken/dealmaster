@@ -27,7 +27,7 @@ jobs:
           fi
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
-        run: npx eslint . --max-warnings=0
+        run: npm run lint
