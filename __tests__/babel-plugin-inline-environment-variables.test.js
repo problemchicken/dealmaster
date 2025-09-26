@@ -39,6 +39,16 @@ describe('inline environment variables plugin', () => {
     );
   });
 
+  it('replaces optional chained member expressions', () => {
+    const output = transform(
+      'const url = process.env?.API_URL ?? "https://fallback.example.com";',
+      pluginOptions,
+    );
+    expect(output).toBe(
+      'const url = "https://example.com" ?? "https://fallback.example.com";',
+    );
+  });
+
   it('supports destructuring object patterns from process.env', () => {
     const output = transform(
       'const { API_URL } = process.env;\nconsole.log(API_URL);',
@@ -46,6 +56,16 @@ describe('inline environment variables plugin', () => {
     );
     expect(output).toBe(
       'const { API_URL } = { API_URL: "https://example.com" };\nconsole.log(API_URL);',
+    );
+  });
+
+  it('supports aliased destructuring entries', () => {
+    const output = transform(
+      'const { API_URL: baseUrl } = process.env;\nconsole.log(baseUrl);',
+      pluginOptions,
+    );
+    expect(output).toBe(
+      'const { API_URL: baseUrl } = { API_URL: "https://example.com" };\nconsole.log(baseUrl);',
     );
   });
 });

@@ -2,6 +2,19 @@
 'use strict';
 
 module.exports = function inlineEnvironmentVariables({types: t}) {
+  function callPathMatcher(path, methodName) {
+    if (!path) {
+      return false;
+    }
+
+    const matcher = path[methodName];
+    if (typeof matcher !== 'function') {
+      return false;
+    }
+
+    return matcher.call(path);
+  }
+
   function toArray(option) {
     if (!option) {
       return null;
@@ -36,10 +49,10 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
     let current = path;
     while (
       current &&
-      (current.isTSNonNullExpression?.() ||
-        current.isTSTypeAssertion?.() ||
-        current.isTSAsExpression?.() ||
-        current.isTypeCastExpression?.())
+      (callPathMatcher(current, 'isTSNonNullExpression') ||
+        callPathMatcher(current, 'isTSTypeAssertion') ||
+        callPathMatcher(current, 'isTSAsExpression') ||
+        callPathMatcher(current, 'isTypeCastExpression'))
     ) {
       current = current.get('expression');
     }
@@ -113,7 +126,9 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
 
   function inlineMemberExpression(path, state) {
     const parent = path.parentPath;
-    const isTypeofOperand = parent?.isUnaryExpression({operator: 'typeof'});
+    const isTypeofOperand = Boolean(
+      parent && parent.isUnaryExpression({operator: 'typeof'}),
+    );
 
     if (!path.isReferenced() && !isTypeofOperand) {
       return;
