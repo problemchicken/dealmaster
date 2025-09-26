@@ -2,87 +2,221 @@
 'use strict';
 
 module.exports = function inlineEnvironmentVariables({types: t}) {
-  function isProcessEnv(node) {
-    if (!node) {
+  function toArray(option) {
+    if (!option) {
+      return null;
+    }
+    return Array.isArray(option) ? option : [option];
+  }
+
+  function getSourceEnv(state) {
+    const {opts} = state;
+    if (opts && opts.env && typeof opts.env === 'object') {
+      return opts.env;
+    }
+    return process.env;
+  }
+
+  function shouldInline(variableName, state) {
+    const include = toArray(state.opts && state.opts.include);
+    const exclude = toArray(state.opts && state.opts.exclude);
+
+    if (include && include.length > 0 && !include.includes(variableName)) {
       return false;
     }
 
-    if (t.isMemberExpression(node) || t.isOptionalMemberExpression(node)) {
-      const {object, property, computed} = node;
-      if (computed || !t.isIdentifier(property, {name: 'env'})) {
+    if (exclude && exclude.includes(variableName)) {
+      return false;
+    }
+
+    return true;
+  }
+
+  function unwrapTypeCast(path) {
+    let current = path;
+    while (
+      current &&
+      (current.isTSNonNullExpression?.() ||
+        current.isTSTypeAssertion?.() ||
+        current.isTSAsExpression?.() ||
+        current.isTypeCastExpression?.())
+    ) {
+      current = current.get('expression');
+    }
+    return current;
+  }
+
+  function isProcessEnvPath(path) {
+    if (!path) {
+      return false;
+    }
+
+    const node = path.node;
+    if (!t.isMemberExpression(node) && !t.isOptionalMemberExpression(node)) {
+      return false;
+    }
+
+    const property = path.get('property');
+    if (node.computed) {
+      if (!property.isStringLiteral({value: 'env'})) {
         return false;
       }
-      if (t.isIdentifier(object, {name: 'process'})) {
-        return true;
-      }
-      if (t.isMemberExpression(object) || t.isOptionalMemberExpression(object)) {
-        return isProcessEnv(object);
-      }
+    } else if (!property.isIdentifier({name: 'env'})) {
+      return false;
+    }
+
+    const object = unwrapTypeCast(path.get('object'));
+    if (object.isIdentifier({name: 'process'})) {
+      return true;
+    }
+
+    if (object.isMemberExpression() || object.isOptionalMemberExpression()) {
+      return isProcessEnvPath(object);
     }
 
     return false;
   }
 
-  function getVariableName(node) {
-    if (t.isMemberExpression(node) || t.isOptionalMemberExpression(node)) {
-      const {property, computed} = node;
-      if (!computed && t.isIdentifier(property)) {
-        return property.name;
-      }
-      if (computed && t.isStringLiteral(property)) {
-        return property.value;
+  function getMemberExpressionName(path) {
+    const node = path.node;
+    const property = path.get('property');
+
+    if (node.computed) {
+      if (property.isStringLiteral()) {
+        return property.node.value;
       }
       if (
-        computed &&
-        t.isTemplateLiteral(property) &&
-        property.expressions.length === 0 &&
-        property.quasis.length === 1
+        property.isTemplateLiteral() &&
+        property.node.expressions.length === 0 &&
+        property.node.quasis.length === 1
       ) {
-        return property.quasis[0].value.cooked;
+        return property.node.quasis[0].value.cooked;
       }
+      return null;
     }
+
+    if (property.isIdentifier()) {
+      return property.node.name;
+    }
+
+    if (property.isStringLiteral()) {
+      return property.node.value;
+    }
+
     return null;
   }
 
-  function shouldInline(variableName, state) {
-    const include = state.opts && Array.isArray(state.opts.include)
-      ? state.opts.include
-      : null;
-    if (!include || include.length === 0) {
-      return true;
-    }
-    return include.includes(variableName);
+  function getReplacementNode(variableName, state) {
+    const value = getSourceEnv(state)[variableName];
+    return value === undefined ? t.identifier('undefined') : t.valueToNode(value);
   }
 
-  function inlinePath(path, state) {
+  function inlineMemberExpression(path, state) {
     if (!path.isReferenced()) {
       return;
     }
 
-    const node = path.node;
-    if (!isProcessEnv(node.object)) {
+    const object = unwrapTypeCast(path.get('object'));
+    if (!isProcessEnvPath(object)) {
       return;
     }
-    const variableName = getVariableName(node);
+
+    const variableName = getMemberExpressionName(path);
     if (!variableName || !shouldInline(variableName, state)) {
       return;
     }
 
-    const value = process.env[variableName];
-    const replacement =
-      value === undefined ? t.identifier('undefined') : t.valueToNode(value);
+    path.replaceWith(getReplacementNode(variableName, state));
+  }
 
-    path.replaceWith(replacement);
+  function getObjectPatternReplacement(patternPath, state) {
+    const properties = patternPath.get('properties');
+    if (properties.length === 0) {
+      return null;
+    }
+
+    const replacementProperties = [];
+
+    for (const propertyPath of properties) {
+      if (!propertyPath.isObjectProperty()) {
+        return null;
+      }
+
+      const keyPath = propertyPath.get('key');
+      let variableName = null;
+
+      if (propertyPath.node.computed) {
+        if (keyPath.isStringLiteral()) {
+          variableName = keyPath.node.value;
+        } else if (
+          keyPath.isTemplateLiteral() &&
+          keyPath.node.expressions.length === 0 &&
+          keyPath.node.quasis.length === 1
+        ) {
+          variableName = keyPath.node.quasis[0].value.cooked;
+        } else {
+          return null;
+        }
+      } else if (keyPath.isIdentifier()) {
+        variableName = keyPath.node.name;
+      } else if (keyPath.isStringLiteral()) {
+        variableName = keyPath.node.value;
+      } else {
+        return null;
+      }
+
+      if (!variableName || !shouldInline(variableName, state)) {
+        return null;
+      }
+
+      const replacement = t.objectProperty(
+        t.cloneNode(propertyPath.node.key),
+        getReplacementNode(variableName, state),
+      );
+      replacement.computed = propertyPath.node.computed;
+      replacementProperties.push(replacement);
+    }
+
+    if (replacementProperties.length === 0) {
+      return null;
+    }
+
+    return t.objectExpression(replacementProperties);
+  }
+
+  function maybeInlineObjectPattern(path, state) {
+    const init = unwrapTypeCast(path.get(path.isAssignmentExpression() ? 'right' : 'init'));
+    if (!init || !isProcessEnvPath(init)) {
+      return;
+    }
+
+    const patternPath = path.get(path.isAssignmentExpression() ? 'left' : 'id');
+    if (!patternPath.isObjectPattern()) {
+      return;
+    }
+
+    const replacement = getObjectPatternReplacement(patternPath, state);
+    if (!replacement) {
+      return;
+    }
+
+    init.replaceWith(replacement);
   }
 
   return {
     name: 'inline-environment-variables-local',
     visitor: {
       MemberExpression(path, state) {
-        inlinePath(path, state);
+        inlineMemberExpression(path, state);
       },
       OptionalMemberExpression(path, state) {
-        inlinePath(path, state);
+        inlineMemberExpression(path, state);
+      },
+      VariableDeclarator(path, state) {
+        maybeInlineObjectPattern(path, state);
+      },
+      AssignmentExpression(path, state) {
+        maybeInlineObjectPattern(path, state);
       },
     },
   };
