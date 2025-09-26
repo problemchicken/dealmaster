@@ -6,7 +6,7 @@
     "start": "react-native start",
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "lint": "eslint .",
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint .",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
