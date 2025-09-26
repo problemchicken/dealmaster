@@ -58,38 +58,81 @@ module.exports = function inlineEnvironmentVariables(api, options = {}) {
     ? new Set(options.include)
     : null;
 
+  const isProcessEnvObject = objectPath => {
+    if (!objectPath) {
+      return false;
+    }
+
+    if (objectPath.isIdentifier({name: 'process'})) {
+      return false;
+    }
+
+    if (
+      objectPath.isMemberExpression() ||
+      objectPath.isOptionalMemberExpression()
+    ) {
+      const property = objectPath.get('property');
+      const isEnvProperty =
+        (!objectPath.node.computed && property.isIdentifier({name: 'env'})) ||
+        (objectPath.node.computed &&
+          property.isStringLiteral({value: 'env'}));
+
+      if (!isEnvProperty) {
+        return false;
+      }
+
+      const object = objectPath.get('object');
+
+      if (object.isIdentifier({name: 'process'})) {
+        return true;
+      }
+
+      if (
+        object.isMemberExpression() ||
+        object.isOptionalMemberExpression()
+      ) {
+        return isProcessEnvObject(object);
+      }
+    }
+
+    return false;
+  };
+
+  const maybeInline = path => {
+    if (!isProcessEnvObject(path.get('object'))) {
+      return;
+    }
+
+    const property = path.get('property');
+    let variableName;
+
+    if (property.isIdentifier()) {
+      variableName = property.node.name;
+    } else if (property.isStringLiteral()) {
+      variableName = property.node.value;
+    }
+
+    if (!variableName) {
+      return;
+    }
+
+    if (include && !include.has(variableName)) {
+      return;
+    }
+
+    const value = process.env[variableName];
+    if (typeof value === 'undefined') {
+      return;
+    }
+
+    path.replaceWith(t.valueToNode(value));
+  };
+
   return {
     name: 'inline-environment-variables-lite',
     visitor: {
-      MemberExpression(path) {
-        if (!path.matchesPattern('process.env')) {
-          return;
-        }
-
-        const property = path.get('property');
-        let variableName;
-
-        if (property.isIdentifier()) {
-          variableName = property.node.name;
-        } else if (property.isStringLiteral()) {
-          variableName = property.node.value;
-        }
-
-        if (!variableName) {
-          return;
-        }
-
-        if (include && !include.has(variableName)) {
-          return;
-        }
-
-        const value = process.env[variableName];
-        if (typeof value === 'undefined') {
-          return;
-        }
-
-        path.replaceWith(t.valueToNode(value));
-      },
+      MemberExpression: maybeInline,
+      OptionalMemberExpression: maybeInline,
     },
   };
 };
