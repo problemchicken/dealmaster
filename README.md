@@ -57,7 +57,8 @@ Copy `.env.example` to `.env` and update the `API_URL` value to point to your ba
 ## Testing & Linting
 
 - Run `npm run lint` to check for lint issues
-- Run `npm run typecheck` to verify TypeScript typings
+- Run `npm run typecheck` to verify TypeScript typings using installed `@types` packages
+- When developing without registry access, run `npm run typecheck:offline` to fall back to the local stubs declared under `./types`
 
 ## License
 
