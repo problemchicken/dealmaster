@@ -10,7 +10,7 @@ import {
 } from 'react-native';
 import PrimaryButton from '../components/PrimaryButton';
 import {colors} from '../theme/colors';
-import {useAuthStore} from '../store/useAuthStore';
+import {useAuthStore, AuthState} from '../store/useAuthStore';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
 import {Deal, useDeals} from '../hooks/useDeals';
@@ -18,7 +18,7 @@ import {Deal, useDeals} from '../hooks/useDeals';
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const HomeScreen: React.FC<Props> = ({navigation}) => {
-  const logout = useAuthStore(state => state.logout);
+  const logout = useAuthStore((state: AuthState) => state.logout);
   const {deals, loading, refreshing, refresh} = useDeals();
 
   const handleLogout = () => {
@@ -49,7 +49,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
       </View>
       <FlatList
         data={deals}
-        keyExtractor={item => item.id}
+        keyExtractor={(item: Deal) => item.id}
         renderItem={renderItem}
         contentContainerStyle={styles.listContent}
         refreshControl={

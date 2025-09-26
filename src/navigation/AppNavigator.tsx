@@ -4,13 +4,15 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
-import {useAuthStore} from '../store/useAuthStore';
+import {useAuthStore, AuthState} from '../store/useAuthStore';
 import {RootStackParamList} from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
 const AppNavigator: React.FC = () => {
-  const isAuthenticated = useAuthStore(state => state.isAuthenticated);
+  const isAuthenticated = useAuthStore(
+    (state: AuthState) => state.isAuthenticated,
+  );
 
   return (
     <NavigationContainer>
