@@ -112,7 +112,10 @@ module.exports = function inlineEnvironmentVariables({types: t}) {
   }
 
   function inlineMemberExpression(path, state) {
-    if (!path.isReferenced()) {
+    const parent = path.parentPath;
+    const isTypeofOperand = parent?.isUnaryExpression({operator: 'typeof'});
+
+    if (!path.isReferenced() && !isTypeofOperand) {
       return;
     }
 
