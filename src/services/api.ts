@@ -1,4 +1,4 @@
-import axios from 'axios';
+import axios, {AxiosHeaders} from 'axios';
 import {useAuthStore} from '../store/useAuthStore';
 
 declare const process: {
@@ -20,10 +20,9 @@ export const api = axios.create({
 api.interceptors.request.use(config => {
   const token = useAuthStore.getState().token;
   if (token) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
+    const headers = AxiosHeaders.from(config.headers ?? {});
+    headers.set('Authorization', `Bearer ${token}`);
+    config.headers = headers;
   }
   return config;
 });
