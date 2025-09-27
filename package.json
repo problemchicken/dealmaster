@@ -6,8 +6,9 @@
     "start": "react-native start",
     "android": "react-native run-android",
     "ios": "react-native run-ios",
-    "lint": "eslint .",
-    "typecheck": "tsc --noEmit"
+    "lint": "ESLINT_USE_FLAT_CONFIG=false eslint . --max-warnings=0",
+    "typecheck": "tsc --noEmit",
+    "test": "jest"
   },
   "dependencies": {
     "@babel/runtime": "^7.23.7",
@@ -26,7 +27,6 @@
     "@babel/preset-env": "^7.23.7",
     "@react-native-community/eslint-config": "^3.2.0",
     "@react-native/metro-config": "^0.76.7",
-    "@babel/plugin-transform-inline-environment-variables": "^7.24.7",
     "@types/react": "18.2.43",
     "@types/react-native": "0.72.5",
     "@types/react-test-renderer": "18.0.0",

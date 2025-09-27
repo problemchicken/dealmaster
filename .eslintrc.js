@@ -1,7 +1,7 @@
 module.exports = {
   root: true,
-  extends: ['@react-native-community'],
+  extends: ['@react-native-community/eslint-config'],
   rules: {
-    'prettier/prettier': 0
+    'prettier/prettier': 0,
   },
 };

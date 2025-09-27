@@ -16,7 +16,7 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install dependencies
         run: |
@@ -27,7 +27,9 @@ jobs:
           fi
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
-        run: npx eslint . --max-warnings=0
+        env:
+          ESLINT_USE_FLAT_CONFIG: false
+        run: npm run lint
