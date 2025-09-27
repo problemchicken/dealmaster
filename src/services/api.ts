@@ -1,4 +1,5 @@
-import axios from 'axios';
+import axios, {AxiosHeaders} from 'axios';
+import type {RawAxiosRequestHeaders} from 'axios';
 import {useAuthStore} from '../store/useAuthStore';
 
 declare const process: {
@@ -20,10 +21,15 @@ export const api = axios.create({
 api.interceptors.request.use(config => {
   const token = useAuthStore.getState().token;
   if (token) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
+    if (config.headers instanceof AxiosHeaders) {
+      config.headers.set('Authorization', `Bearer ${token}`);
+    } else {
+      const existingHeaders = config.headers as RawAxiosRequestHeaders | undefined;
+      config.headers = {
+        ...existingHeaders,
+        Authorization: `Bearer ${token}`,
+      };
+    }
   }
   return config;
 });
