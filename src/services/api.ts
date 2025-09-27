@@ -1,11 +1,7 @@
-import axios from 'axios';
+import axios, {AxiosHeaders} from 'axios';
 import {useAuthStore} from '../store/useAuthStore';
 
-declare const process: {
-  env?: {
-    API_URL?: string;
-  };
-};
+declare const process: {env?: {API_URL?: string}};
 
 const API_URL =
   typeof process !== 'undefined' && process.env?.API_URL
@@ -20,10 +16,13 @@ export const api = axios.create({
 api.interceptors.request.use(config => {
   const token = useAuthStore.getState().token;
   if (token) {
-    config.headers = {
-      ...config.headers,
-      Authorization: `Bearer ${token}`,
-    };
+    const headers =
+      config.headers instanceof AxiosHeaders
+        ? config.headers
+        : AxiosHeaders.from(config.headers ?? {});
+
+    headers.set('Authorization', `Bearer ${token}`);
+    config.headers = headers;
   }
   return config;
 });

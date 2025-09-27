@@ -1,0 +1,13 @@
+{
+  "name": "@babel/plugin-transform-inline-environment-variables",
+  "version": "7.24.7",
+  "description": "Inlines environment variables into your code at build time.",
+  "main": "index.js",
+  "license": "MIT",
+  "peerDependencies": {
+    "@babel/core": "^7.0.0"
+  },
+  "dependencies": {
+    "@babel/helper-plugin-utils": "^7.24.7"
+  }
+}
