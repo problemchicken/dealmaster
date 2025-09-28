@@ -1,4 +1,5 @@
 import type {SQLiteDatabase} from 'react-native-sqlite-storage';
+import {AUTO_SUMMARY_PREFIX} from '../constants/chat';
 import {getDatabase} from './database';
 import {ChatRecord, MessageRecord} from './types';
 
@@ -149,7 +150,7 @@ export const upsertSummaryMessage = async (
 
   if (existing) {
     const isAutoSummary = typeof existing.content === 'string'
-      ? existing.content.startsWith('以下為較早對話的摘要：')
+      ? existing.content.startsWith(AUTO_SUMMARY_PREFIX)
       : false;
     if (!options?.force && !isAutoSummary) {
       return mapMessage(existing);

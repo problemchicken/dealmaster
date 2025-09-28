@@ -1,3 +1,4 @@
+import {AUTO_SUMMARY_PREFIX} from '../constants/chat';
 import {addMessage, getMessagesForChat, upsertSummaryMessage} from '../storage/chatRepository';
 import {MessageRecord} from '../storage/types';
 import {estimateTokenSize, summarizeMessages} from './summarizer';
@@ -5,7 +6,8 @@ import {streamChatCompletion} from './gptStream';
 
 const TOKEN_LIMIT = 1800;
 const RECENT_MESSAGE_COUNT = 8;
-export const AUTO_SUMMARY_PREFIX = '以下為較早對話的摘要：';
+
+export {AUTO_SUMMARY_PREFIX};
 
 export type GenerateChatOptions = {
   responder?: ChatResponder;
@@ -85,7 +87,8 @@ export const buildContextForPreview = async (chatId: number) => {
 
 export const summarizeChatToDate = async (chatId: number) => {
   const messages = await getMessagesForChat(chatId);
-  const summary = summarizeMessages(messages, {targetLength: 280});
+  const meaningfulMessages = messages.filter(message => message.role !== 'summary');
+  const summary = summarizeMessages(meaningfulMessages, {targetLength: 280});
   const storedSummary = await upsertSummaryMessage(chatId, summary, {force: true});
   return storedSummary;
 };
