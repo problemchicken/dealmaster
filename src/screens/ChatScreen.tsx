@@ -14,6 +14,7 @@ import {
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
 import {
+  AUTO_SUMMARY_PREFIX,
   buildContextForPreview,
   generateChat,
   summarizeChatToDate,
@@ -37,6 +38,20 @@ const ChatScreen: React.FC<Props> = ({route}) => {
 
   const pinnedSummary = useMemo(() => {
     return [...messages].reverse().find(message => message.role === 'summary');
+  }, [messages]);
+
+  const summaryDisplayContent = useMemo(() => {
+    if (!pinnedSummary) {
+      return '';
+    }
+    if (pinnedSummary.content.startsWith(AUTO_SUMMARY_PREFIX)) {
+      return pinnedSummary.content.slice(AUTO_SUMMARY_PREFIX.length).trimStart();
+    }
+    return pinnedSummary.content;
+  }, [pinnedSummary]);
+
+  const nonSummaryMessages = useMemo(() => {
+    return messages.filter(message => message.role !== 'summary');
   }, [messages]);
 
   const loadMessages = useCallback(async () => {
@@ -117,10 +132,17 @@ const ChatScreen: React.FC<Props> = ({route}) => {
 
   const displayMessages = useMemo(() => {
     if (!streamingMessage) {
-      return messages;
+      return nonSummaryMessages;
     }
-    return [...messages, streamingMessage];
-  }, [messages, streamingMessage]);
+    return [...nonSummaryMessages, streamingMessage];
+  }, [nonSummaryMessages, streamingMessage]);
+
+  const summaryBadgeLabel = useMemo(() => {
+    if (!pinnedSummary) {
+      return undefined;
+    }
+    return pinnedSummary.content.startsWith(AUTO_SUMMARY_PREFIX) ? '自動產生' : '手動產生';
+  }, [pinnedSummary]);
 
   const renderMessage = ({item}: {item: MessageRecord}) => {
     const isUser = item.role === 'user';
@@ -164,8 +186,13 @@ const ChatScreen: React.FC<Props> = ({route}) => {
         keyboardVerticalOffset={Platform.OS === 'ios' ? 80 : 0}>
         {pinnedSummary ? (
           <View style={styles.pinnedSummary}>
-            <Text style={styles.summaryTitle}>一鍵總結</Text>
-            <Text style={styles.summaryContent}>{pinnedSummary.content}</Text>
+            <View style={styles.summaryHeader}>
+              <Text style={styles.summaryTitle}>一鍵總結</Text>
+              {summaryBadgeLabel ? (
+                <Text style={styles.summaryBadge}>{summaryBadgeLabel}</Text>
+              ) : null}
+            </View>
+            <Text style={styles.summaryContent}>{summaryDisplayContent}</Text>
           </View>
         ) : null}
         <FlatList
@@ -242,8 +269,21 @@ const styles = StyleSheet.create({
   summaryTitle: {
     fontSize: 16,
     fontWeight: '600',
-    marginBottom: 8,
     color: colors.text,
+  },
+  summaryHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  summaryBadge: {
+    marginLeft: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 8,
+    backgroundColor: '#DCE6FF',
+    color: '#1A3A8C',
+    fontSize: 12,
   },
   summaryContent: {
     fontSize: 14,

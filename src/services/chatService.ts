@@ -1,14 +1,11 @@
-import {
-  addMessage,
-  getMessagesForChat,
-  updateChatTimestamp,
-} from '../storage/chatRepository';
+import {addMessage, getMessagesForChat, upsertSummaryMessage} from '../storage/chatRepository';
 import {MessageRecord} from '../storage/types';
 import {estimateTokenSize, summarizeMessages} from './summarizer';
 import {streamChatCompletion} from './gptStream';
 
 const TOKEN_LIMIT = 1800;
 const RECENT_MESSAGE_COUNT = 8;
+export const AUTO_SUMMARY_PREFIX = '以下為較早對話的摘要：';
 
 export type GenerateChatOptions = {
   responder?: ChatResponder;
@@ -30,24 +27,29 @@ const injectSummaryIfNeeded = async (
   chatId: number,
   messages: MessageRecord[],
 ): Promise<{context: MessageRecord[]; summary?: MessageRecord}> => {
-  const tokenSize = estimateTokenSize(messages);
+  const existingSummary = [...messages].reverse().find(message => message.role === 'summary');
+  const nonSummaryMessages = messages.filter(message => message.role !== 'summary');
+  const baseMessages = existingSummary
+    ? [existingSummary, ...nonSummaryMessages]
+    : nonSummaryMessages;
+  const tokenSize = estimateTokenSize(baseMessages);
   if (tokenSize <= TOKEN_LIMIT) {
-    return {context: messages};
+    return {context: baseMessages, summary: existingSummary};
   }
 
-  const historical = messages.slice(0, Math.max(0, messages.length - RECENT_MESSAGE_COUNT));
-  const recent = messages.slice(-RECENT_MESSAGE_COUNT);
+  const historical = nonSummaryMessages.slice(
+    0,
+    Math.max(0, nonSummaryMessages.length - RECENT_MESSAGE_COUNT),
+  );
+  const recent = nonSummaryMessages.slice(-RECENT_MESSAGE_COUNT);
   const summaryContent = summarizeMessages(historical, {targetLength: 280});
-  const summaryMessage: MessageRecord = {
-    id: -1,
-    chat_id: chatId,
-    role: 'summary',
-    content: `以下為較早對話的摘要：\n${summaryContent}`,
-    created_at: new Date().toISOString(),
-  };
+  const storedSummary = await upsertSummaryMessage(
+    chatId,
+    `${AUTO_SUMMARY_PREFIX}\n${summaryContent}`,
+  );
   return {
-    context: [summaryMessage, ...recent],
-    summary: summaryMessage,
+    context: [storedSummary, ...recent],
+    summary: storedSummary,
   };
 };
 
@@ -84,8 +86,7 @@ export const buildContextForPreview = async (chatId: number) => {
 export const summarizeChatToDate = async (chatId: number) => {
   const messages = await getMessagesForChat(chatId);
   const summary = summarizeMessages(messages, {targetLength: 280});
-  const storedSummary = await addMessage(chatId, 'summary', summary);
-  await updateChatTimestamp(chatId);
+  const storedSummary = await upsertSummaryMessage(chatId, summary, {force: true});
   return storedSummary;
 };
 

@@ -1,3 +1,4 @@
+import type {SQLiteDatabase} from 'react-native-sqlite-storage';
 import {getDatabase} from './database';
 import {ChatRecord, MessageRecord} from './types';
 
@@ -34,6 +35,20 @@ export const updateChatTimestamp = async (chatId: number) => {
   const db = await getDatabase();
   const now = new Date().toISOString();
   await db.executeSql('UPDATE chats SET updated_at = ? WHERE id = ?;', [now, chatId]);
+};
+
+const getLatestSummaryRow = async (
+  db: SQLiteDatabase,
+  chatId: number,
+) => {
+  const result = await db.executeSql(
+    'SELECT * FROM messages WHERE chat_id = ? AND role = ? ORDER BY datetime(created_at) DESC LIMIT 1;',
+    [chatId, 'summary'],
+  );
+  if (result[0].rows.length === 0) {
+    return undefined;
+  }
+  return result[0].rows.item(0);
 };
 
 export const getChats = async (): Promise<ChatRecord[]> => {
@@ -121,6 +136,42 @@ export const getLatestMessageForChat = async (
     return undefined;
   }
   return mapMessage(result[0].rows.item(0));
+};
+
+export const upsertSummaryMessage = async (
+  chatId: number,
+  content: string,
+  options?: {force?: boolean},
+): Promise<MessageRecord> => {
+  const db = await getDatabase();
+  const now = new Date().toISOString();
+  const existing = await getLatestSummaryRow(db, chatId);
+
+  if (existing) {
+    const isAutoSummary = typeof existing.content === 'string'
+      ? existing.content.startsWith('以下為較早對話的摘要：')
+      : false;
+    if (!options?.force && !isAutoSummary) {
+      return mapMessage(existing);
+    }
+
+    await db.executeSql('UPDATE messages SET content = ?, created_at = ? WHERE id = ?;', [content, now, existing.id]);
+    await updateChatTimestamp(chatId);
+    return mapMessage({
+      ...existing,
+      content,
+      created_at: now,
+    });
+  }
+
+  const result = await db.executeSql(
+    'INSERT INTO messages (chat_id, role, content, created_at) VALUES (?, ?, ?, ?);',
+    [chatId, 'summary', content, now],
+  );
+  await updateChatTimestamp(chatId);
+  const insertedId = result[0].insertId ?? 0;
+  const rows = await db.executeSql('SELECT * FROM messages WHERE id = ?;', [insertedId]);
+  return mapMessage(rows[0].rows.item(0));
 };
 
 
