@@ -45,7 +45,18 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>{"Today's Deals"}</Text>
-        <PrimaryButton title="Settings" onPress={() => navigation.navigate('Settings')} />
+      </View>
+      <View style={styles.actionRow}>
+        <PrimaryButton
+          title="Ask Deal AI"
+          onPress={() => navigation.navigate('Chat')}
+          style={[styles.actionButton, styles.actionButtonSpacing, styles.chatButton]}
+        />
+        <PrimaryButton
+          title="Settings"
+          onPress={() => navigation.navigate('Settings')}
+          style={styles.actionButton}
+        />
       </View>
       <FlatList
         data={deals}
@@ -73,9 +84,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingTop: 24,
     paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
   },
   title: {
     fontSize: 24,
@@ -114,6 +122,21 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     margin: 20,
+  },
+  actionRow: {
+    flexDirection: 'row',
+    paddingHorizontal: 20,
+    marginBottom: 12,
+    alignItems: 'center',
+  },
+  actionButton: {
+    flex: 1,
+  },
+  actionButtonSpacing: {
+    marginRight: 12,
+  },
+  chatButton: {
+    backgroundColor: '#1d4ed8',
   },
   loadingContainer: {
     flex: 1,

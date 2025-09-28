@@ -4,6 +4,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import ChatScreen from '../screens/ChatScreen';
 import {useAuthStore} from '../store/useAuthStore';
 import {RootStackParamList} from './types';
 
@@ -18,6 +19,7 @@ const AppNavigator: React.FC = () => {
         {isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="Chat" component={ChatScreen} />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (
