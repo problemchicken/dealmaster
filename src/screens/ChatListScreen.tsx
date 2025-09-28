@@ -1,6 +1,7 @@
 import React, {useCallback, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   RefreshControl,
   SafeAreaView,
@@ -47,6 +48,9 @@ const ChatListScreen: React.FC = () => {
         });
       }
       setChats(items);
+    } catch (error) {
+      console.error('Failed to load chats', error);
+      Alert.alert('載入失敗', '無法取得對話列表，請稍後再試。');
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -65,9 +69,14 @@ const ChatListScreen: React.FC = () => {
   }, [loadChats]);
 
   const handleCreateChat = useCallback(async () => {
-    const newChat = await createChat(`新的對話 ${new Date().toLocaleTimeString()}`);
-    await loadChats();
-    navigation.navigate('Chat', {chatId: newChat.id, title: newChat.title});
+    try {
+      const newChat = await createChat(`新的對話 ${new Date().toLocaleTimeString()}`);
+      await loadChats();
+      navigation.navigate('Chat', {chatId: newChat.id, title: newChat.title});
+    } catch (error) {
+      console.error('Failed to create chat', error);
+      Alert.alert('建立失敗', '暫時無法建立新對話，請稍後再試。');
+    }
   }, [loadChats, navigation]);
 
   const renderItem = ({item}: {item: ListItem}) => (

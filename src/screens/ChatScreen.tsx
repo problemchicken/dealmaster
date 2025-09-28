@@ -183,6 +183,8 @@ const ChatScreen: React.FC<Props> = ({route}) => {
                       ? '你'
                       : message.role === 'assistant'
                       ? 'DealMaster AI'
+                      : message.role === 'summary'
+                      ? '摘要'
                       : '系統';
                   return (
                     <Text
