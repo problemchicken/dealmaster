@@ -1,5 +1,9 @@
 import {getEnvVar} from '../utils/env';
-import {ChatMessage, ChatCompletionChunk} from './types';
+import {
+  ChatCompletionChunk,
+  ChatCompletionChunkChoice,
+  ChatMessage,
+} from './types';
 
 export interface GenerateChatOptions {
   messages: ChatMessage[];
@@ -17,15 +21,58 @@ const API_URL = 'https://api.openai.com/v1/chat/completions';
 const readApiKey = (): string | undefined =>
   getEnvVar('GPT5_API_KEY') ?? getEnvVar('OPENAI_API_KEY');
 
-const getTextDecoder = async () => {
-  const GlobalTextDecoder = (globalThis as unknown as {TextDecoder?: typeof TextDecoder})
-    .TextDecoder;
-  if (GlobalTextDecoder) {
-    return new GlobalTextDecoder('utf-8');
+type GlobalWithTextDecoder = typeof globalThis & {
+  TextDecoder?: typeof TextDecoder;
+};
+
+type DecoderInput =
+  | ArrayBuffer
+  | ArrayBufferView
+  | SharedArrayBuffer
+  | null
+  | undefined;
+
+interface Utf8TextDecoder {
+  decode(input?: DecoderInput, options?: {stream?: boolean}): string;
+}
+
+let decoderPromise: Promise<Utf8TextDecoder> | null = null;
+
+const getTextDecoder = async (): Promise<Utf8TextDecoder> => {
+  if (!decoderPromise) {
+    decoderPromise = (async () => {
+      const GlobalTextDecoder = (globalThis as GlobalWithTextDecoder).TextDecoder;
+      if (GlobalTextDecoder) {
+        return new GlobalTextDecoder('utf-8');
+      }
+
+      const {TextDecoder: NodeTextDecoder} = await import('util');
+      return new NodeTextDecoder('utf-8');
+    })();
   }
 
-  const util = await import('util');
-  return new util.TextDecoder('utf-8');
+  return decoderPromise;
+};
+
+const isReadableStream = (body: Response['body']): body is ReadableStream =>
+  Boolean(body && typeof body.getReader === 'function');
+
+const extractMessageContent = (
+  choice: ChatCompletionChunkChoice | undefined,
+): string | undefined => {
+  if (!choice) {
+    return undefined;
+  }
+
+  if (typeof choice.delta?.content === 'string') {
+    return choice.delta.content;
+  }
+
+  if (typeof choice.message?.content === 'string') {
+    return choice.message.content;
+  }
+
+  return undefined;
 };
 
 const emitDelta = (
@@ -61,10 +108,7 @@ const parseCompleteResponse = async (response: Response): Promise<ChatMessage> =
   const text = await response.text();
   try {
     const json = JSON.parse(text) as ChatCompletionChunk;
-    const content =
-      json.choices?.[0]?.delta?.content ??
-      json.choices?.[0]?.message?.content ??
-      '';
+    const content = extractMessageContent(json.choices?.[0]) ?? '';
     return {role: 'assistant', content};
   } catch (error) {
     return {role: 'assistant', content: text};
@@ -104,7 +148,7 @@ export const generateChat = async ({
 
   const body = response.body;
 
-  if (body && typeof body.getReader === 'function') {
+  if (isReadableStream(body)) {
     const reader = body.getReader();
     const textDecoder = await getTextDecoder();
 
