@@ -1,4 +1,5 @@
 import {TextDecoder} from 'util';
+import {AUTO_SUMMARY_PREFIX} from '../constants/chat';
 import {MessageRecord} from '../storage/types';
 
 const CHAT_COMPLETIONS_URL =
@@ -30,9 +31,12 @@ type StreamInput = {
 
 const toChatMessagePayload = (message: MessageRecord) => {
   if (message.role === 'summary') {
+    const trimmed = message.content.startsWith(AUTO_SUMMARY_PREFIX)
+      ? message.content.slice(AUTO_SUMMARY_PREFIX.length).trimStart()
+      : message.content;
     return {
       role: 'system' as const,
-      content: `Conversation summary so far:\n${message.content}`,
+      content: `Conversation summary so far:\n${trimmed}`,
     };
   }
   if (message.role === 'system') {
