@@ -47,6 +47,9 @@ const ChatScreen: React.FC<Props> = ({route}) => {
       setStreamingMessage(null);
       const preview = await buildContextForPreview(chatId);
       setContextPreview(preview);
+    } catch (error) {
+      console.error('Failed to load chat history', error);
+      Alert.alert('載入失敗', '無法載入對話歷史，請稍後再試。');
     } finally {
       setLoading(false);
     }
