@@ -1,4 +1,4 @@
-import React, {useCallback, useMemo, useRef, useState} from 'react';
+import React, {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {ListRenderItem} from 'react-native';
 import {
@@ -19,6 +19,7 @@ import type {ChatMessage} from '../ai/types';
 import {RootStackParamList} from '../navigation/types';
 import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';
+import {chatMemory, DEFAULT_SESSION_TITLE} from '../services/chatMemory';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -28,11 +29,16 @@ const SYSTEM_PROMPT: ChatMessage = {
     'You are DealMaster AI, an enthusiastic shopping assistant that helps users discover amazing deals.',
 };
 
-const ChatScreen: React.FC<Props> = () => {
+const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [isStreaming, setIsStreaming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionId, setSessionId] = useState<string | null>(
+    route.params?.sessionId ?? null,
+  );
+  const sessionIdRef = useRef<string | null>(sessionId);
+  const [initializing, setInitializing] = useState(true);
   const abortController = useRef<AbortController | null>(null);
   const messagesRef = useRef<ChatMessage[]>(messages);
   const envOverrides = useSettingsStore(state => state.envOverrides);
@@ -45,24 +51,110 @@ const ChatScreen: React.FC<Props> = () => {
     return Boolean(getEnvVar('GPT5_API_KEY') ?? getEnvVar('OPENAI_API_KEY'));
   }, [envOverrides]);
 
-  const updateMessages = useCallback((updater: (prev: ChatMessage[]) => ChatMessage[]) => {
-    setMessages(prev => {
-      const next = updater(prev);
-      messagesRef.current = next;
-      return next;
-    });
-  }, []);
+  useEffect(() => {
+    sessionIdRef.current = sessionId;
+  }, [sessionId]);
+
+  const persistMessages = useCallback(
+    async (
+      conversation: ChatMessage[],
+      options: {updateTitle?: boolean} = {},
+    ) => {
+      const currentSessionId = sessionIdRef.current;
+      if (!currentSessionId) {
+        return;
+      }
+      await chatMemory.saveConversation(currentSessionId, conversation);
+      if (options.updateTitle) {
+        const updatedTitle = await chatMemory.updateTitle(
+          currentSessionId,
+          conversation,
+        );
+        navigation.setParams({title: updatedTitle});
+      }
+    },
+    [navigation],
+  );
+
+  const updateMessages = useCallback(
+    (
+      updater: (prev: ChatMessage[]) => ChatMessage[],
+      options: {persist?: boolean; updateTitle?: boolean} = {},
+    ) => {
+      setMessages(prev => {
+        const next = updater(prev);
+        messagesRef.current = next;
+        if (options.persist !== false) {
+          persistMessages(next, {updateTitle: options.updateTitle}).catch(
+            () => undefined,
+          );
+        }
+        return next;
+      });
+    },
+    [persistMessages],
+  );
+
+  const routeParams = route.params ?? {};
+  const routeSessionId = routeParams.sessionId;
+  const routeTitle = routeParams.title;
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const ensureSession = async () => {
+      await chatMemory.initialize();
+      if (!isMounted) {
+        return;
+      }
+
+      if (routeSessionId) {
+        const existing = await chatMemory.getSession(routeSessionId);
+        if (!isMounted) {
+          return;
+        }
+        if (existing) {
+          setSessionId(existing.id);
+          updateMessages(() => existing.messages ?? [], {persist: false});
+          if (existing.title !== routeTitle) {
+            navigation.setParams({title: existing.title});
+          }
+          setInitializing(false);
+          return;
+        }
+      }
+
+      const created = await chatMemory.createSession(
+        typeof routeTitle === 'string' && routeTitle.length > 0
+          ? routeTitle
+          : DEFAULT_SESSION_TITLE,
+      );
+      if (!isMounted) {
+        return;
+      }
+      setSessionId(created.id);
+      updateMessages(() => created.messages ?? [], {persist: false});
+      navigation.setParams({sessionId: created.id, title: created.title});
+      setInitializing(false);
+    };
+
+    ensureSession();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [navigation, routeSessionId, routeTitle, updateMessages]);
 
   const appendMessage = useCallback(
-    (message: ChatMessage) => {
-      updateMessages(prev => [...prev, message]);
+    (message: ChatMessage, options?: {updateTitle?: boolean}) => {
+      updateMessages(prev => [...prev, message], options);
     },
     [updateMessages],
   );
 
   const sendMessage = useCallback(async () => {
     const trimmed = input.trim();
-    if (!trimmed || isStreaming) {
+    if (!trimmed || isStreaming || !sessionId) {
       return;
     }
 
@@ -75,7 +167,7 @@ const ChatScreen: React.FC<Props> = () => {
     setInput('');
     const userMessage: ChatMessage = {role: 'user', content: trimmed};
     const conversation = [...messagesRef.current, userMessage];
-    appendMessage(userMessage);
+    appendMessage(userMessage, {updateTitle: true});
     setIsStreaming(true);
 
     const controller = new AbortController();
@@ -143,7 +235,7 @@ const ChatScreen: React.FC<Props> = () => {
       setIsStreaming(false);
       abortController.current = null;
     }
-  }, [appendMessage, hasApiKey, input, isStreaming, updateMessages]);
+  }, [appendMessage, hasApiKey, input, isStreaming, sessionId, updateMessages]);
 
   const handleStop = () => {
     abortController.current?.abort();
@@ -156,7 +248,7 @@ const ChatScreen: React.FC<Props> = () => {
     abortController.current = null;
     setIsStreaming(false);
     setError(null);
-    updateMessages(() => []);
+    updateMessages(() => [], {updateTitle: true});
   };
 
   const renderMessage: ListRenderItem<ChatMessage> = ({item}) => {
@@ -181,7 +273,8 @@ const ChatScreen: React.FC<Props> = () => {
   };
 
   const trimmedInput = input.trim();
-  const disableSendButton = !isStreaming && trimmedInput.length === 0;
+  const disableSendButton =
+    initializing || !sessionId || (!isStreaming && trimmedInput.length === 0);
 
   return (
     <SafeAreaView style={styles.container}>

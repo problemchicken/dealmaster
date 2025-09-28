@@ -5,6 +5,7 @@ import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatScreen from '../screens/ChatScreen';
+import ChatListScreen from '../screens/ChatListScreen';
 import {useAuthStore} from '../store/useAuthStore';
 import type {RootStackParamList} from './types';
 
@@ -19,7 +20,18 @@ const AppNavigator: React.FC = () => {
         {isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="Chat" component={ChatScreen} />
+            <Stack.Screen
+              name="ChatList"
+              component={ChatListScreen}
+              options={{title: '對話列表'}}
+            />
+            <Stack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={({route}) => ({
+                title: route.params?.title ?? 'Chat',
+              })}
+            />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (
