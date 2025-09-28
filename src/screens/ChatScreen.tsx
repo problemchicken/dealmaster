@@ -131,12 +131,17 @@ const ChatScreen: React.FC<Props> = ({route}) => {
       isSummary && styles.summaryBubble,
     ];
     const textStyle = [styles.messageText, isUser ? styles.userText : styles.assistantText];
+    const label = isSummary
+      ? '摘要'
+      : isUser
+      ? '你'
+      : item.role === 'assistant'
+      ? 'DealMaster AI'
+      : '系統';
 
     return (
       <View style={containerStyle}>
-        <Text style={styles.metaLabel}>
-          {isSummary ? '摘要' : isUser ? '你' : 'DealMaster AI'}
-        </Text>
+        <Text style={styles.metaLabel}>{label}</Text>
         <Text style={[...textStyle, isSummary && styles.summaryText]}>{item.content}</Text>
       </View>
     );
@@ -172,11 +177,19 @@ const ChatScreen: React.FC<Props> = ({route}) => {
             contextPreview.length > 0 ? (
               <View style={styles.contextPreview}>
                 <Text style={styles.contextTitle}>模型輸入預覽</Text>
-                {contextPreview.map(message => (
-                  <Text key={`${message.id}-${message.created_at}`} style={styles.contextText}>
-                    {`${message.role === 'user' ? '你' : '系統'}：${message.content}`}
-                  </Text>
-                ))}
+                {contextPreview.map(message => {
+                  const roleLabel =
+                    message.role === 'user'
+                      ? '你'
+                      : message.role === 'assistant'
+                      ? 'DealMaster AI'
+                      : '系統';
+                  return (
+                    <Text
+                      key={`${message.id}-${message.created_at}`}
+                      style={styles.contextText}>{`${roleLabel}：${message.content}`}</Text>
+                  );
+                })}
               </View>
             ) : undefined
           }

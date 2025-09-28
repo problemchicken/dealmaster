@@ -22,29 +22,8 @@ type ChatResponder = (input: {
   onToken?: (token: string) => void;
 }) => Promise<string>;
 
-const fallbackResponder: ChatResponder = async ({messages}) => {
-  const lastUser = [...messages].reverse().find(message => message.role === 'user');
-  if (!lastUser) {
-    return '你好！今天想聊些什麼？';
-  }
-  const context = messages
-    .filter(message => message.role !== 'summary')
-    .slice(-3)
-    .map(message =>
-      message.role === 'user'
-        ? `你說：「${message.content}」`
-        : `我回覆：「${message.content}」`,
-    )
-    .join(' ');
-  return `收到你的訊息：「${lastUser.content}」。我會記得先前的脈絡：${context}`;
-};
-
 const defaultResponder: ChatResponder = async input => {
-  try {
-    return await streamChatCompletion(input);
-  } catch (error) {
-    return fallbackResponder(input);
-  }
+  return streamChatCompletion(input);
 };
 
 const injectSummaryIfNeeded = async (
