@@ -41,7 +41,7 @@ const injectSummaryIfNeeded = async (
   const summaryMessage: MessageRecord = {
     id: -1,
     chat_id: chatId,
-    role: 'system',
+    role: 'summary',
     content: `以下為較早對話的摘要：\n${summaryContent}`,
     created_at: new Date().toISOString(),
   };
