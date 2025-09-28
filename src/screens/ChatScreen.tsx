@@ -1,6 +1,7 @@
 import React, {useCallback, useEffect, useMemo, useState} from 'react';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
   Platform,
@@ -88,6 +89,9 @@ const ChatScreen: React.FC<Props> = ({route}) => {
         },
       });
       await loadMessages();
+    } catch (error) {
+      console.error('Failed to send chat message', error);
+      Alert.alert('傳送失敗', '請稍後再試一次。');
     } finally {
       setStreamingMessage(null);
       setSending(false);
@@ -100,6 +104,9 @@ const ChatScreen: React.FC<Props> = ({route}) => {
       setStreamingMessage(null);
       await summarizeChatToDate(chatId);
       await loadMessages();
+    } catch (error) {
+      console.error('Failed to summarize chat history', error);
+      Alert.alert('摘要失敗', '產生摘要時發生問題，請稍後再試。');
     } finally {
       setSummarizing(false);
     }
