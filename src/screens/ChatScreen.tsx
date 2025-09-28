@@ -1,9 +1,10 @@
 import React, {useCallback, useMemo, useRef, useState} from 'react';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
+import type {ListRenderItem} from 'react-native';
 import {
   ActivityIndicator,
   FlatList,
   KeyboardAvoidingView,
-  ListRenderItem,
   Platform,
   SafeAreaView,
   StyleSheet,
@@ -12,10 +13,9 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
-import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors} from '../theme/colors';
 import {generateChat} from '../ai/generateChat';
-import {ChatMessage} from '../ai/types';
+import type {ChatMessage} from '../ai/types';
 import {RootStackParamList} from '../navigation/types';
 import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';

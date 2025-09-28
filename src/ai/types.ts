@@ -5,9 +5,11 @@ export interface ChatMessage {
   content: string;
 }
 
+export interface ChatCompletionChunkChoice {
+  delta?: Partial<ChatMessage> & {content?: string};
+  message?: ChatMessage;
+}
+
 export interface ChatCompletionChunk {
-  choices?: Array<{
-    delta?: Partial<ChatMessage>;
-    message?: ChatMessage;
-  }>;
+  choices?: ChatCompletionChunkChoice[];
 }

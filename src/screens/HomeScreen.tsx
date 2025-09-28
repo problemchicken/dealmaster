@@ -1,4 +1,5 @@
 import React from 'react';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
   FlatList,
@@ -11,9 +12,9 @@ import {
 import PrimaryButton from '../components/PrimaryButton';
 import {colors} from '../theme/colors';
 import {useAuthStore} from '../store/useAuthStore';
-import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
-import {Deal, useDeals} from '../hooks/useDeals';
+import {useDeals} from '../hooks/useDeals';
+import type {Deal} from '../hooks/useDeals';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 

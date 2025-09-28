@@ -1,4 +1,5 @@
 import React, {useEffect, useMemo, useState} from 'react';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   SafeAreaView,
   ScrollView,
@@ -8,7 +9,6 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {colors} from '../theme/colors';
 import {useAuthStore} from '../store/useAuthStore';
 import PrimaryButton from '../components/PrimaryButton';
