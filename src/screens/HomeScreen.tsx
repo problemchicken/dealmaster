@@ -47,6 +47,12 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         <Text style={styles.title}>{"Today's Deals"}</Text>
         <PrimaryButton title="Settings" onPress={() => navigation.navigate('Settings')} />
       </View>
+      <View style={styles.actions}>
+        <PrimaryButton
+          title="開啟 AI 對話"
+          onPress={() => navigation.navigate('ChatList')}
+        />
+      </View>
       <FlatList
         data={deals}
         keyExtractor={item => item.id}
@@ -114,6 +120,9 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     margin: 20,
+  },
+  actions: {
+    paddingHorizontal: 20,
   },
   loadingContainer: {
     flex: 1,
