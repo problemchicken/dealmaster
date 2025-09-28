@@ -32,6 +32,7 @@ const ChatScreen: React.FC<Props> = ({route}) => {
   const [loading, setLoading] = useState(true);
   const [sending, setSending] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
+  const [streamingMessage, setStreamingMessage] = useState<MessageRecord | null>(null);
 
   const pinnedSummary = useMemo(() => {
     return [...messages].reverse().find(message => message.role === 'summary');
@@ -42,6 +43,7 @@ const ChatScreen: React.FC<Props> = ({route}) => {
     try {
       const history = await getMessagesForChat(chatId);
       setMessages(history);
+      setStreamingMessage(null);
       const preview = await buildContextForPreview(chatId);
       setContextPreview(preview);
     } finally {
@@ -54,15 +56,40 @@ const ChatScreen: React.FC<Props> = ({route}) => {
   }, [loadMessages]);
 
   const handleSend = useCallback(async () => {
-    if (!input.trim()) {
+    const trimmed = input.trim();
+    if (!trimmed) {
       return;
     }
     try {
       setSending(true);
-      await generateChat(chatId, input);
       setInput('');
+      setStreamingMessage(null);
+      await generateChat(chatId, trimmed, {
+        onUserMessage: message => {
+          setMessages(prev => [...prev, message]);
+        },
+        onToken: token => {
+          setStreamingMessage(prev => {
+            const base =
+              prev ??
+              ({
+                id: Number.MAX_SAFE_INTEGER,
+                chat_id: chatId,
+                role: 'assistant',
+                content: '',
+                created_at: new Date().toISOString(),
+              } as MessageRecord);
+            return {...base, content: base.content + token};
+          });
+        },
+        onAssistantMessage: message => {
+          setStreamingMessage(null);
+          setMessages(prev => [...prev, message]);
+        },
+      });
       await loadMessages();
     } finally {
+      setStreamingMessage(null);
       setSending(false);
     }
   }, [chatId, input, loadMessages]);
@@ -70,12 +97,20 @@ const ChatScreen: React.FC<Props> = ({route}) => {
   const handleSummarize = useCallback(async () => {
     try {
       setSummarizing(true);
+      setStreamingMessage(null);
       await summarizeChatToDate(chatId);
       await loadMessages();
     } finally {
       setSummarizing(false);
     }
   }, [chatId, loadMessages]);
+
+  const displayMessages = useMemo(() => {
+    if (!streamingMessage) {
+      return messages;
+    }
+    return [...messages, streamingMessage];
+  }, [messages, streamingMessage]);
 
   const renderMessage = ({item}: {item: MessageRecord}) => {
     const isUser = item.role === 'user';
@@ -119,8 +154,8 @@ const ChatScreen: React.FC<Props> = ({route}) => {
           </View>
         ) : null}
         <FlatList
-          data={messages}
-          keyExtractor={item => item.id.toString()}
+          data={displayMessages}
+          keyExtractor={item => `${item.id}-${item.created_at}`}
           renderItem={renderMessage}
           contentContainerStyle={styles.listContent}
           ListHeaderComponent={

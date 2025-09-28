@@ -1,15 +1,28 @@
-import {addMessage, getMessagesForChat, updateChatTimestamp} from '../storage/chatRepository';
+import {
+  addMessage,
+  getMessagesForChat,
+  updateChatTimestamp,
+} from '../storage/chatRepository';
 import {MessageRecord} from '../storage/types';
 import {estimateTokenSize, summarizeMessages} from './summarizer';
+import {streamChatCompletion} from './gptStream';
 
 const TOKEN_LIMIT = 1800;
 const RECENT_MESSAGE_COUNT = 8;
 
 export type GenerateChatOptions = {
-  responder?: (messages: MessageRecord[]) => Promise<string>;
+  responder?: ChatResponder;
+  onToken?: (token: string) => void;
+  onUserMessage?: (message: MessageRecord) => void;
+  onAssistantMessage?: (message: MessageRecord) => void;
 };
 
-const defaultResponder = async (messages: MessageRecord[]) => {
+type ChatResponder = (input: {
+  messages: MessageRecord[];
+  onToken?: (token: string) => void;
+}) => Promise<string>;
+
+const fallbackResponder: ChatResponder = async ({messages}) => {
   const lastUser = [...messages].reverse().find(message => message.role === 'user');
   if (!lastUser) {
     return '你好！今天想聊些什麼？';
@@ -17,9 +30,21 @@ const defaultResponder = async (messages: MessageRecord[]) => {
   const context = messages
     .filter(message => message.role !== 'summary')
     .slice(-3)
-    .map(message => (message.role === 'user' ? `你說：「${message.content}」` : `我回覆：「${message.content}」`))
+    .map(message =>
+      message.role === 'user'
+        ? `你說：「${message.content}」`
+        : `我回覆：「${message.content}」`,
+    )
     .join(' ');
   return `收到你的訊息：「${lastUser.content}」。我會記得先前的脈絡：${context}`;
+};
+
+const defaultResponder: ChatResponder = async input => {
+  try {
+    return await streamChatCompletion(input);
+  } catch (error) {
+    return fallbackResponder(input);
+  }
 };
 
 const injectSummaryIfNeeded = async (
@@ -57,12 +82,18 @@ export const generateChat = async (
     return;
   }
 
-  await addMessage(chatId, 'user', trimmed);
+  const storedUser = await addMessage(chatId, 'user', trimmed);
+  options?.onUserMessage?.(storedUser);
   const messages = await getMessagesForChat(chatId);
   const {context} = await injectSummaryIfNeeded(chatId, messages);
   const responder = options?.responder ?? defaultResponder;
-  const assistantReply = await responder(context);
-  await addMessage(chatId, 'assistant', assistantReply);
+  const assistantReply = await responder({
+    messages: context,
+    onToken: options?.onToken,
+  });
+  const storedAssistant = await addMessage(chatId, 'assistant', assistantReply);
+  options?.onAssistantMessage?.(storedAssistant);
+  return {user: storedUser, assistant: storedAssistant};
 };
 
 export const buildContextForPreview = async (chatId: number) => {
