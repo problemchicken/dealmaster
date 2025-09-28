@@ -11,6 +11,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import {useFocusEffect} from '@react-navigation/native';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
 import {
@@ -73,6 +74,12 @@ const ChatScreen: React.FC<Props> = ({route}) => {
   useEffect(() => {
     loadMessages();
   }, [loadMessages]);
+
+  useFocusEffect(
+    useCallback(() => {
+      loadMessages();
+    }, [loadMessages]),
+  );
 
   const handleSend = useCallback(async () => {
     const trimmed = input.trim();
