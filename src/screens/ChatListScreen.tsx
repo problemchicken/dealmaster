@@ -15,14 +15,10 @@ import {NativeStackNavigationProp} from '@react-navigation/native-stack';
 import PrimaryButton from '../components/PrimaryButton';
 import {colors} from '../theme/colors';
 import {RootStackParamList} from '../navigation/types';
-import {createChat, getChats, getLatestMessageForChat} from '../storage/chatRepository';
-import {ChatRecord} from '../storage/types';
+import {createChat, getChatsWithLatestMessage} from '../storage/chatRepository';
+import {ChatWithLatestMessage} from '../storage/types';
 
 type NavigationProp = NativeStackNavigationProp<RootStackParamList, 'ChatList'>;
-
-type ListItem = ChatRecord & {
-  latestMessage?: string;
-};
 
 const formatTimestamp = (timestamp: string) => {
   const date = new Date(timestamp);
@@ -33,21 +29,13 @@ const ChatListScreen: React.FC = () => {
   const navigation = useNavigation<NavigationProp>();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [chats, setChats] = useState<ListItem[]>([]);
+  const [chats, setChats] = useState<ChatWithLatestMessage[]>([]);
 
   const loadChats = useCallback(async () => {
     try {
       setLoading(true);
-      const chatRecords = await getChats();
-      const items: ListItem[] = [];
-      for (const chat of chatRecords) {
-        const latest = await getLatestMessageForChat(chat.id);
-        items.push({
-          ...chat,
-          latestMessage: latest?.content,
-        });
-      }
-      setChats(items);
+      const records = await getChatsWithLatestMessage();
+      setChats(records);
     } catch (error) {
       console.error('Failed to load chats', error);
       Alert.alert('載入失敗', '無法取得對話列表，請稍後再試。');
@@ -79,13 +67,13 @@ const ChatListScreen: React.FC = () => {
     }
   }, [loadChats, navigation]);
 
-  const renderItem = ({item}: {item: ListItem}) => (
+  const renderItem = ({item}: {item: ChatWithLatestMessage}) => (
     <TouchableOpacity
       style={styles.chatCard}
       onPress={() => navigation.navigate('Chat', {chatId: item.id, title: item.title})}>
       <Text style={styles.chatTitle}>{item.title}</Text>
       <Text style={styles.chatSubtitle} numberOfLines={2}>
-        {item.latestMessage ?? '尚未開始對話'}
+        {item.latestMessage?.content ?? '尚未開始對話'}
       </Text>
       <Text style={styles.chatTimestamp}>{formatTimestamp(item.updated_at)}</Text>
     </TouchableOpacity>

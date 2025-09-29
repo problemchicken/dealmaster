@@ -1,7 +1,7 @@
 import type {SQLiteDatabase} from 'react-native-sqlite-storage';
 import {AUTO_SUMMARY_PREFIX} from '../constants/chat';
 import {getDatabase} from './database';
-import {ChatRecord, MessageRecord} from './types';
+import {ChatRecord, ChatWithLatestMessage, MessageRecord} from './types';
 
 const mapChat = (row: any): ChatRecord => ({
   id: row.id,
@@ -59,6 +59,50 @@ export const getChats = async (): Promise<ChatRecord[]> => {
   const items: ChatRecord[] = [];
   for (let i = 0; i < rows.length; i += 1) {
     items.push(mapChat(rows.item(i)));
+  }
+  return items;
+};
+
+export const getChatsWithLatestMessage = async (): Promise<ChatWithLatestMessage[]> => {
+  const db = await getDatabase();
+  const result = await db.executeSql(
+    `SELECT
+      c.id,
+      c.title,
+      c.created_at,
+      c.updated_at,
+      m.id AS latest_id,
+      m.chat_id AS latest_chat_id,
+      m.role AS latest_role,
+      m.content AS latest_content,
+      m.created_at AS latest_created_at
+    FROM chats c
+    LEFT JOIN messages m ON m.id = (
+      SELECT id FROM messages
+      WHERE chat_id = c.id
+      ORDER BY datetime(created_at) DESC
+      LIMIT 1
+    )
+    ORDER BY datetime(c.updated_at) DESC;`,
+  );
+
+  const rows = result[0].rows;
+  const items: ChatWithLatestMessage[] = [];
+  for (let i = 0; i < rows.length; i += 1) {
+    const row = rows.item(i);
+    const chat = mapChat(row);
+    if (row.latest_id != null) {
+      const latest = mapMessage({
+        id: row.latest_id,
+        chat_id: row.latest_chat_id,
+        role: row.latest_role,
+        content: row.latest_content,
+        created_at: row.latest_created_at,
+      });
+      items.push({...chat, latestMessage: latest});
+    } else {
+      items.push(chat);
+    }
   }
   return items;
 };

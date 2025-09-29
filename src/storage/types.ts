@@ -13,3 +13,7 @@ export type MessageRecord = {
   created_at: string;
 };
 
+export type ChatWithLatestMessage = ChatRecord & {
+  latestMessage?: MessageRecord;
+};
+
