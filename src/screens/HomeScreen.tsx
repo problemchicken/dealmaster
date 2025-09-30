@@ -1,4 +1,4 @@
-import React, {useCallback} from 'react';
+import React from 'react';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
@@ -15,7 +15,6 @@ import {useAuthStore} from '../store/useAuthStore';
 import {RootStackParamList} from '../navigation/types';
 import {useDeals} from '../hooks/useDeals';
 import type {Deal} from '../hooks/useDeals';
-import {chatMemory} from '../services/chatMemory';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -26,15 +25,6 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
   const handleLogout = () => {
     logout();
   };
-
-  const handleStartChat = useCallback(async () => {
-    await chatMemory.initialize();
-    const session = await chatMemory.createSession();
-    navigation.navigate('Chat', {
-      sessionId: session.id,
-      title: session.title,
-    });
-  }, [navigation]);
 
   const renderItem = ({item}: {item: Deal}) => (
     <View style={styles.dealCard}>
@@ -59,14 +49,9 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         <PrimaryButton title="Settings" onPress={() => navigation.navigate('Settings')} />
       </View>
       <PrimaryButton
-        title="Ask DealMaster AI"
-        onPress={handleStartChat}
-        style={styles.chatButton}
-      />
-      <PrimaryButton
-        title="View Chat History"
+        title="開始 AI 對話"
         onPress={() => navigation.navigate('ChatList')}
-        style={styles.chatHistoryButton}
+        style={styles.chatButton}
       />
       <FlatList
         data={deals}
@@ -137,10 +122,6 @@ const styles = StyleSheet.create({
     margin: 20,
   },
   chatButton: {
-    marginHorizontal: 20,
-    marginBottom: 16,
-  },
-  chatHistoryButton: {
     marginHorizontal: 20,
     marginBottom: 16,
   },
