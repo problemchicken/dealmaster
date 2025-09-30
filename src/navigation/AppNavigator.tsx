@@ -6,8 +6,10 @@ import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import ChatScreen from '../screens/ChatScreen';
+import ChatScreen from '../screens/ChatScreen';
+import ChatListScreen from '../screens/ChatListScreen';
 import {useAuthStore} from '../store/useAuthStore';
-import {RootStackParamList} from './types';
+import type {RootStackParamList} from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -22,6 +24,18 @@ const AppNavigator: React.FC = () => {
             <Stack.Screen name="Home" component={HomeScreen} />
             <Stack.Screen name="ChatList" component={ChatListScreen} options={{title: '對話列表'}} />
             <Stack.Screen name="Chat" component={ChatScreen} options={({route}) => ({title: route.params.title})} />
+            <Stack.Screen
+              name="ChatList"
+              component={ChatListScreen}
+              options={{title: '對話列表'}}
+            />
+            <Stack.Screen
+              name="Chat"
+              component={ChatScreen}
+              options={({route}) => ({
+                title: route.params?.title ?? 'Chat',
+              })}
+            />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>
         ) : (

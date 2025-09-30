@@ -19,15 +19,10 @@ jobs:
           cache: 'npm'
 
       - name: Install dependencies
-        run: |
-          if [ -f package-lock.json ]; then
-            npm ci
-          else
-            npm install --no-audit --prefer-offline --legacy-peer-deps
-          fi
+        run: npm ci
 
       - name: Typecheck
-        run: npx tsc --noEmit
+        run: npm run typecheck
 
       - name: Lint
-        run: npx eslint . --max-warnings=0
+        run: npm run lint -- --max-warnings=0

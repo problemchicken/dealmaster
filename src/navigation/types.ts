@@ -1,7 +1,9 @@
 export type RootStackParamList = {
-  Login: undefined;
   Home: undefined;
+  ChatList: undefined;
+  Chat: {sessionId?: string; title?: string} | undefined;
   Settings: undefined;
   ChatList: undefined;
   Chat: {chatId: number; title: string};
+  Login: undefined;
 };
