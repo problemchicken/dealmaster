@@ -45,7 +45,17 @@ const parseMessages = (serialized: unknown): ChatMessage[] => {
 
 let sqliteModule: SQLiteModule = null;
 try {
-  sqliteModule = require('expo-sqlite');
+  const requiredModule = require('expo-sqlite');
+  if (requiredModule && typeof requiredModule.openDatabase === 'function') {
+    sqliteModule = requiredModule as SQLiteModule;
+  } else if (
+    requiredModule?.default &&
+    typeof requiredModule.default.openDatabase === 'function'
+  ) {
+    sqliteModule = requiredModule.default as SQLiteModule;
+  } else {
+    sqliteModule = null;
+  }
 } catch {
   sqliteModule = null;
 }
