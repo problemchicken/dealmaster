@@ -1,4 +1,6 @@
 import React, {useMemo, useState} from 'react';
+import React from 'react';
+import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
   FlatList,
@@ -18,6 +20,12 @@ import {useAuthStore} from '../store/useAuthStore';
 import CopilotChat from '../components/CopilotChat';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import {FREE_MESSAGE_LIMIT} from '../subscription/limits';
+import PrimaryButton from '../components/PrimaryButton';
+import {colors} from '../theme/colors';
+import {useAuthStore} from '../store/useAuthStore';
+import {RootStackParamList} from '../navigation/types';
+import {useDeals} from '../hooks/useDeals';
+import type {Deal} from '../hooks/useDeals';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -86,6 +94,17 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     }
 
     return (
+  return (
+    <SafeAreaView style={styles.container}>
+      <View style={styles.header}>
+        <Text style={styles.title}>{"Today's Deals"}</Text>
+        <PrimaryButton title="Settings" onPress={() => navigation.navigate('Settings')} />
+      </View>
+      <PrimaryButton
+        title="開始 AI 對話"
+        onPress={() => navigation.navigate('ChatList')}
+        style={styles.chatButton}
+      />
       <FlatList
         data={deals}
         keyExtractor={item => item.id}
@@ -187,6 +206,10 @@ const styles = StyleSheet.create({
   },
   logoutButton: {
     margin: 20,
+  },
+  chatButton: {
+    marginHorizontal: 20,
+    marginBottom: 16,
   },
   loadingContainer: {
     flex: 1,
