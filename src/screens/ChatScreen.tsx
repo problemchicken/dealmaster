@@ -20,7 +20,7 @@ import {RootStackParamList} from '../navigation/types';
 import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';
 import {chatSessionsService} from '../services/chatSessions';
-import {pickImage, extractText} from '../ai/ocr';
+import {pickImage, ocrImageToText} from '../ai/ocr';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import UpgradeModal from '../components/UpgradeModal';
 
@@ -335,7 +335,17 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         return;
       }
 
-      const text = await extractText(image.uri);
+      const lines = await ocrImageToText(image.uri);
+      if (!lines.length) {
+        setError('未能擷取到文字，請重試或更換圖片。');
+        return;
+      }
+
+      const text = lines
+        .map(line => line.trim())
+        .filter(Boolean)
+        .join('\n');
+
       if (!text.trim()) {
         setError('未能擷取到文字，請重試或更換圖片。');
         return;
