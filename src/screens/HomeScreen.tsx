@@ -1,4 +1,4 @@
-import React from 'react';
+import React, {useEffect, useMemo} from 'react';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   ActivityIndicator,
@@ -7,6 +7,7 @@ import {
   SafeAreaView,
   StyleSheet,
   Text,
+  TouchableOpacity,
   View,
 } from 'react-native';
 import PrimaryButton from '../components/PrimaryButton';
@@ -15,15 +16,83 @@ import {useAuthStore} from '../store/useAuthStore';
 import {RootStackParamList} from '../navigation/types';
 import {useDeals} from '../hooks/useDeals';
 import type {Deal} from '../hooks/useDeals';
+import UpgradeModal from '../components/UpgradeModal';
+import {useSubscriptionStore} from '../store/useSubscriptionStore';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 const HomeScreen: React.FC<Props> = ({navigation}) => {
   const logout = useAuthStore(state => state.logout);
   const {deals, loading, refreshing, refresh} = useDeals();
+  const {
+    plan,
+    dailyQuota,
+    usedQuota,
+    upgradeModalVisible,
+    loadSubscription,
+    openUpgradeModal,
+    closeUpgradeModal,
+    setPlan,
+  } = useSubscriptionStore(state => ({
+    plan: state.plan,
+    dailyQuota: state.dailyQuota,
+    usedQuota: state.usedQuota,
+    upgradeModalVisible: state.upgradeModalVisible,
+    loadSubscription: state.loadSubscription,
+    openUpgradeModal: state.openUpgradeModal,
+    closeUpgradeModal: state.closeUpgradeModal,
+    setPlan: state.setPlan,
+  }));
+
+  useEffect(() => {
+    loadSubscription().catch(error => {
+      console.error('Failed to hydrate subscription state', error);
+    });
+  }, [loadSubscription]);
+
+  const quotaInfo = useMemo(() => {
+    if (plan === 'pro') {
+      return {
+        isQuotaExceeded: false,
+        remainingQuotaLabel: 'Unlimited chats with Pro plan',
+        bannerStyle: styles.subscriptionBannerPro,
+        title: 'Pro plan active',
+        message: 'Enjoy unlimited AI chats and premium deal alerts.',
+      } as const;
+    }
+
+    const remaining = Math.max(dailyQuota - usedQuota, 0);
+    const isQuotaExceeded = remaining === 0;
+    return {
+      isQuotaExceeded,
+      remainingQuotaLabel: isQuotaExceeded
+        ? "You've reached today's free chat limit."
+        : `You can start ${remaining} more chat${remaining === 1 ? '' : 's'} today.`,
+      bannerStyle: isQuotaExceeded
+        ? styles.subscriptionBannerWarning
+        : styles.subscriptionBannerInfo,
+      title: isQuotaExceeded ? 'Daily free limit reached' : 'Free plan usage',
+      message: isQuotaExceeded
+        ? 'Upgrade to keep chatting with the DealMaster assistant.'
+        : 'Upgrade to Pro for unlimited chats and faster deal insights.',
+    } as const;
+  }, [plan, dailyQuota, usedQuota]);
 
   const handleLogout = () => {
     logout();
+  };
+
+  const handleNavigateToChat = () => {
+    if (quotaInfo.isQuotaExceeded) {
+      openUpgradeModal();
+      return;
+    }
+    navigation.navigate('ChatList');
+  };
+
+  const handleUpgrade = async () => {
+    await setPlan('pro');
+    closeUpgradeModal();
   };
 
   const renderItem = ({item}: {item: Deal}) => (
@@ -48,11 +117,27 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         <Text style={styles.title}>{"Today's Deals"}</Text>
         <PrimaryButton title="Settings" onPress={() => navigation.navigate('Settings')} />
       </View>
+      <View style={[styles.subscriptionBanner, quotaInfo.bannerStyle]}>
+        <Text style={styles.subscriptionTitle}>{quotaInfo.title}</Text>
+        <Text style={styles.subscriptionMessage}>{quotaInfo.remainingQuotaLabel}</Text>
+        <Text style={styles.subscriptionMessageSecondary}>{quotaInfo.message}</Text>
+        {plan === 'free' ? (
+          <TouchableOpacity onPress={openUpgradeModal} style={styles.upgradeLink}>
+            <Text style={styles.upgradeLinkText}>Upgrade to Pro</Text>
+          </TouchableOpacity>
+        ) : null}
+      </View>
       <PrimaryButton
         title="開始 AI 對話"
-        onPress={() => navigation.navigate('ChatList')}
+        onPress={handleNavigateToChat}
+        disabled={quotaInfo.isQuotaExceeded}
         style={styles.chatButton}
       />
+      {quotaInfo.isQuotaExceeded ? (
+        <Text style={styles.quotaHint}>
+          Upgrade your plan to continue chatting with DealMaster today.
+        </Text>
+      ) : null}
       <FlatList
         data={deals}
         keyExtractor={item => item.id}
@@ -66,6 +151,12 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
         }
       />
       <PrimaryButton title="Log Out" onPress={handleLogout} style={styles.logoutButton} />
+      <UpgradeModal
+        visible={upgradeModalVisible}
+        plan={plan}
+        onClose={closeUpgradeModal}
+        onUpgrade={handleUpgrade}
+      />
     </SafeAreaView>
   );
 };
@@ -125,6 +216,13 @@ const styles = StyleSheet.create({
     marginHorizontal: 20,
     marginBottom: 16,
   },
+  quotaHint: {
+    marginHorizontal: 20,
+    color: colors.primary,
+    fontSize: 14,
+    marginBottom: 12,
+    fontWeight: '500',
+  },
   loadingContainer: {
     flex: 1,
     alignItems: 'center',
@@ -134,6 +232,43 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: 12,
     color: colors.muted,
+  },
+  subscriptionBanner: {
+    marginHorizontal: 20,
+    marginBottom: 16,
+    borderRadius: 16,
+    padding: 16,
+  },
+  subscriptionBannerInfo: {
+    backgroundColor: '#e0f2fe',
+  },
+  subscriptionBannerWarning: {
+    backgroundColor: '#fee2e2',
+  },
+  subscriptionBannerPro: {
+    backgroundColor: '#dcfce7',
+  },
+  subscriptionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.text,
+    marginBottom: 4,
+  },
+  subscriptionMessage: {
+    fontSize: 14,
+    color: colors.text,
+  },
+  subscriptionMessageSecondary: {
+    fontSize: 13,
+    color: colors.muted,
+    marginTop: 4,
+  },
+  upgradeLink: {
+    marginTop: 12,
+  },
+  upgradeLinkText: {
+    color: colors.primary,
+    fontWeight: '600',
   },
 });
 
