@@ -26,7 +26,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
   const {deals, loading, refreshing, refresh} = useDeals();
   const {
     plan,
-    dailyQuota,
+    monthlyQuota,
     usedQuota,
     upgradeModalVisible,
     loadSubscription,
@@ -35,7 +35,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     setPlan,
   } = useSubscriptionStore(state => ({
     plan: state.plan,
-    dailyQuota: state.dailyQuota,
+    monthlyQuota: state.monthlyQuota,
     usedQuota: state.usedQuota,
     upgradeModalVisible: state.upgradeModalVisible,
     loadSubscription: state.loadSubscription,
@@ -61,22 +61,22 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
       } as const;
     }
 
-    const remaining = Math.max(dailyQuota - usedQuota, 0);
+    const remaining = Math.max(monthlyQuota - usedQuota, 0);
     const isQuotaExceeded = remaining === 0;
     return {
       isQuotaExceeded,
       remainingQuotaLabel: isQuotaExceeded
-        ? "You've reached today's free chat limit."
-        : `You can start ${remaining} more chat${remaining === 1 ? '' : 's'} today.`,
+        ? "You've reached this month's free AI limit."
+        : `You can start ${remaining} more AI request${remaining === 1 ? '' : 's'} this month.`,
       bannerStyle: isQuotaExceeded
         ? styles.subscriptionBannerWarning
         : styles.subscriptionBannerInfo,
-      title: isQuotaExceeded ? 'Daily free limit reached' : 'Free plan usage',
+      title: isQuotaExceeded ? 'Monthly free limit reached' : 'Free plan usage',
       message: isQuotaExceeded
-        ? 'Upgrade to keep chatting with the DealMaster assistant.'
-        : 'Upgrade to Pro for unlimited chats and faster deal insights.',
+        ? 'Upgrade to keep using DealMaster AI this month.'
+        : 'Upgrade to Pro for unlimited AI chats and faster deal insights.',
     } as const;
-  }, [plan, dailyQuota, usedQuota]);
+  }, [plan, monthlyQuota, usedQuota]);
 
   const handleLogout = () => {
     logout();
@@ -135,7 +135,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
       />
       {quotaInfo.isQuotaExceeded ? (
         <Text style={styles.quotaHint}>
-          Upgrade your plan to continue chatting with DealMaster today.
+          Upgrade your plan to keep using DealMaster AI this month.
         </Text>
       ) : null}
       <FlatList

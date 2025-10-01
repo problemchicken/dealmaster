@@ -1,4 +1,7 @@
 {
   "name": "dealmaster",
-  "displayName": "DealMaster"
+  "displayName": "DealMaster",
+  "expo": {
+    "plugins": ["expo-mlkit-ocr", "expo-image-picker"]
+  }
 }

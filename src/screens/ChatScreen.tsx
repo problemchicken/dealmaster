@@ -20,6 +20,9 @@ import {RootStackParamList} from '../navigation/types';
 import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';
 import {chatSessionsService} from '../services/chatSessions';
+import {pickImage, extractText} from '../ai/ocr';
+import {useSubscriptionStore} from '../store/useSubscriptionStore';
+import UpgradeModal from '../components/UpgradeModal';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -38,10 +41,33 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     route.params?.sessionId ?? null,
   );
   const sessionIdRef = useRef<string | null>(sessionId);
+  const pendingMessageRef = useRef<string | null>(null);
   const [initializing, setInitializing] = useState(true);
   const abortController = useRef<AbortController | null>(null);
   const messagesRef = useRef<ChatMessage[]>(messages);
   const envOverrides = useSettingsStore(state => state.envOverrides);
+  const {
+    plan,
+    monthlyQuota,
+    usedQuota,
+    recordUsage,
+    upgradeModalVisible,
+    openUpgradeModal,
+    closeUpgradeModal,
+    setPlan,
+  } = useSubscriptionStore(state => ({
+    plan: state.plan,
+    monthlyQuota: state.monthlyQuota,
+    usedQuota: state.usedQuota,
+    recordUsage: state.recordUsage,
+    upgradeModalVisible: state.upgradeModalVisible,
+    openUpgradeModal: state.openUpgradeModal,
+    closeUpgradeModal: state.closeUpgradeModal,
+    setPlan: state.setPlan,
+  }));
+  const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+
+  const isQuotaExceeded = plan === 'free' && usedQuota >= monthlyQuota;
 
   const hasApiKey = useMemo(() => {
     const override = envOverrides.GPT5_API_KEY ?? envOverrides.OPENAI_API_KEY;
@@ -97,6 +123,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   const routeParams = route.params ?? {};
   const routeSessionId = routeParams.sessionId;
   const routeTitle = routeParams.title;
+  const routePendingMessage = routeParams.pendingMessage;
 
   useEffect(() => {
     let isMounted = true;
@@ -151,90 +178,187 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     [updateMessages],
   );
 
-  const sendMessage = useCallback(async () => {
-    const trimmed = input.trim();
-    if (!trimmed || isStreaming || !sessionId) {
+  const sendUserMessage = useCallback(
+    async (content: string, options?: {clearInput?: boolean}) => {
+      const trimmed = content.trim();
+      if (!trimmed || isStreaming || !sessionId) {
+        if (options?.clearInput) {
+          setInput('');
+        }
+        return;
+      }
+
+      if (!hasApiKey) {
+        setError('Add your GPT-5 API key in Settings to start chatting.');
+        return;
+      }
+
+      if (isQuotaExceeded) {
+        openUpgradeModal();
+        return;
+      }
+
+      setError(null);
+      if (options?.clearInput) {
+        setInput('');
+      }
+
+      const userMessage: ChatMessage = {role: 'user', content: trimmed};
+      const conversation = [...messagesRef.current, userMessage];
+      appendMessage(userMessage, {updateTitle: true});
+      setIsStreaming(true);
+
+      const controller = new AbortController();
+      abortController.current = controller;
+
+      let didStream = false;
+
+      await recordUsage().catch(err => {
+        console.error('Failed to record usage', err);
+      });
+
+      try {
+        const result = await generateChat({
+          messages: [SYSTEM_PROMPT, ...conversation],
+          signal: controller.signal,
+          onToken: token => {
+            didStream = true;
+            updateMessages(prev => {
+              if (prev.length === 0) {
+                return [{role: 'assistant', content: token}];
+              }
+
+              const last = prev[prev.length - 1];
+              if (last.role === 'assistant') {
+                const next = [...prev];
+                next[next.length - 1] = {
+                  ...last,
+                  content: last.content + token,
+                };
+                return next;
+              }
+
+              return [...prev, {role: 'assistant', content: token}];
+            });
+          },
+        });
+
+        if (didStream) {
+          updateMessages(prev => {
+            if (prev.length === 0) {
+              return [result.message];
+            }
+            const next = [...prev];
+            const last = next[next.length - 1];
+            if (last.role === 'assistant') {
+              next[next.length - 1] = result.message;
+              return next;
+            }
+            return [...next, result.message];
+          });
+        } else {
+          appendMessage(result.message);
+        }
+      } catch (err) {
+        const message = err instanceof Error ? err.message : 'Unknown error';
+        setError(message);
+        updateMessages(prev => {
+          if (prev.length === 0) {
+            return prev;
+          }
+          const next = [...prev];
+          const last = next[next.length - 1];
+          if (last.role === 'assistant' && last.content.length === 0) {
+            next.pop();
+          }
+          return next;
+        });
+      } finally {
+        setIsStreaming(false);
+        abortController.current = null;
+      }
+    },
+    [
+      appendMessage,
+      hasApiKey,
+      isQuotaExceeded,
+      isStreaming,
+      openUpgradeModal,
+      recordUsage,
+      sessionId,
+      updateMessages,
+    ],
+  );
+
+  const sendMessage = useCallback(() => {
+    sendUserMessage(input, {clearInput: true});
+  }, [input, sendUserMessage]);
+
+  useEffect(() => {
+    const pending = routePendingMessage;
+    if (!pending) {
       return;
     }
+    if (!sessionId || initializing || isStreaming) {
+      return;
+    }
+    if (pendingMessageRef.current === pending) {
+      navigation.setParams({pendingMessage: undefined});
+      return;
+    }
+    pendingMessageRef.current = pending;
+    sendUserMessage(pending)
+      .catch(() => undefined)
+      .finally(() => {
+        navigation.setParams({pendingMessage: undefined});
+      });
+  }, [
+    initializing,
+    isStreaming,
+    navigation,
+    routePendingMessage,
+    sendUserMessage,
+    sessionId,
+  ]);
 
-    if (!hasApiKey) {
-      setError('Add your GPT-5 API key in Settings to start chatting.');
+  const handleStartOcr = useCallback(async () => {
+    if (isQuotaExceeded) {
+      openUpgradeModal();
       return;
     }
 
     setError(null);
-    setInput('');
-    const userMessage: ChatMessage = {role: 'user', content: trimmed};
-    const conversation = [...messagesRef.current, userMessage];
-    appendMessage(userMessage, {updateTitle: true});
-    setIsStreaming(true);
-
-    const controller = new AbortController();
-    abortController.current = controller;
-
-    let didStream = false;
-
+    setIsOcrProcessing(true);
     try {
-      const result = await generateChat({
-        messages: [SYSTEM_PROMPT, ...conversation],
-        signal: controller.signal,
-        onToken: token => {
-          didStream = true;
-          updateMessages(prev => {
-            if (prev.length === 0) {
-              return [{role: 'assistant', content: token}];
-            }
-
-            const last = prev[prev.length - 1];
-            if (last.role === 'assistant') {
-              const next = [...prev];
-              next[next.length - 1] = {
-                ...last,
-                content: last.content + token,
-              };
-              return next;
-            }
-
-            return [...prev, {role: 'assistant', content: token}];
-          });
-        },
-      });
-
-      if (didStream) {
-        updateMessages(prev => {
-          if (prev.length === 0) {
-            return [result.message];
-          }
-          const next = [...prev];
-          const last = next[next.length - 1];
-          if (last.role === 'assistant') {
-            next[next.length - 1] = result.message;
-            return next;
-          }
-          return [...next, result.message];
-        });
-      } else {
-        appendMessage(result.message);
+      const image = await pickImage();
+      if (!image) {
+        return;
       }
+
+      const text = await extractText(image.uri);
+      if (!text.trim()) {
+        setError('未能擷取到文字，請重試或更換圖片。');
+        return;
+      }
+
+      navigation.navigate('OcrConfirm', {
+        extractedText: text,
+        sessionId: sessionIdRef.current ?? undefined,
+        title: routeTitle,
+      });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
-      setError(message);
-      updateMessages(prev => {
-        if (prev.length === 0) {
-          return prev;
-        }
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last.role === 'assistant' && last.content.length === 0) {
-          next.pop();
-        }
-        return next;
-      });
+      setError(`OCR 失敗：${message}`);
+      console.error('Failed to process OCR', err);
     } finally {
-      setIsStreaming(false);
-      abortController.current = null;
+      setIsOcrProcessing(false);
     }
-  }, [appendMessage, hasApiKey, input, isStreaming, sessionId, updateMessages]);
+  }, [isQuotaExceeded, navigation, openUpgradeModal, routeTitle, setError]);
+
+  const handleUpgrade = useCallback(async () => {
+    await setPlan('pro');
+    closeUpgradeModal();
+  }, [closeUpgradeModal, setPlan]);
 
   const handleStop = () => {
     abortController.current?.abort();
@@ -273,7 +397,10 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
 
   const trimmedInput = input.trim();
   const disableSendButton =
-    initializing || !sessionId || (!isStreaming && trimmedInput.length === 0);
+    initializing ||
+    !sessionId ||
+    (!isStreaming && (trimmedInput.length === 0 || isQuotaExceeded));
+  const disableOcrButton = isQuotaExceeded || isOcrProcessing || initializing || isStreaming;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -320,6 +447,18 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
             accessibilityLabel="Chat input"
           />
           <TouchableOpacity
+            onPress={handleStartOcr}
+            style={[styles.ocrButton, disableOcrButton && styles.ocrButtonDisabled]}
+            disabled={disableOcrButton}
+            accessibilityRole="button"
+            accessibilityLabel="Start OCR">
+            {isOcrProcessing ? (
+              <ActivityIndicator color={colors.primary} />
+            ) : (
+              <Text style={styles.ocrButtonText}>OCR</Text>
+            )}
+          </TouchableOpacity>
+          <TouchableOpacity
             onPress={isStreaming ? handleStop : sendMessage}
             style={[styles.sendButton, disableSendButton && styles.sendButtonDisabled]}
             disabled={disableSendButton}>
@@ -330,7 +469,18 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
             )}
           </TouchableOpacity>
         </View>
+        {isQuotaExceeded ? (
+          <Text style={styles.quotaWarning}>
+            免費方案本月額度已用完，升級 Pro 享無限次數。
+          </Text>
+        ) : null}
       </KeyboardAvoidingView>
+      <UpgradeModal
+        visible={upgradeModalVisible}
+        plan={plan}
+        onClose={closeUpgradeModal}
+        onUpgrade={handleUpgrade}
+      />
     </SafeAreaView>
   );
 };
@@ -444,6 +594,25 @@ const styles = StyleSheet.create({
     color: colors.text,
     backgroundColor: colors.white,
   },
+  ocrButton: {
+    borderWidth: 1,
+    borderColor: colors.primary,
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+    backgroundColor: colors.white,
+  },
+  ocrButtonDisabled: {
+    opacity: 0.6,
+  },
+  ocrButtonText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
   sendButton: {
     backgroundColor: colors.primary,
     borderRadius: 16,
@@ -460,6 +629,13 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontWeight: '600',
     fontSize: 15,
+  },
+  quotaWarning: {
+    color: colors.primary,
+    textAlign: 'center',
+    marginHorizontal: 20,
+    marginBottom: 12,
+    fontSize: 13,
   },
 });
 

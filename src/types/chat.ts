@@ -31,4 +31,5 @@ export type ChatSessionListItem = ChatSessionMetadata;
 export interface ChatScreenParams {
   sessionId?: string;
   title?: string;
+  pendingMessage?: string;
 }
