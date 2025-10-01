@@ -1,6 +1,6 @@
 import {Alert, Platform} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import * as MLKitOcr from 'expo-mlkit-ocr';
+import TextRecognition from 'react-native-text-recognition';
 
 export type PickedImage = {
   uri: string;
@@ -77,30 +77,39 @@ export const pickImage = async (): Promise<PickedImage | null> => {
   return normalizeAsset(result.assets[0]);
 };
 
+const prepareOcrUri = (value: string): string => {
+  if (!value) {
+    return '';
+  }
+
+  if (Platform.OS === 'ios') {
+    return value.replace(/^file:\/\//, '');
+  }
+
+  if (Platform.OS === 'android') {
+    return value;
+  }
+
+  return value;
+};
+
 export const extractText = async (uri: string): Promise<string> => {
   if (!uri) {
     return '';
   }
 
-  const ocrResult = await MLKitOcr.scanFromUri(uri);
-  if (!ocrResult?.blocks?.length) {
+  const normalizedUri = prepareOcrUri(uri);
+  if (!normalizedUri) {
     return '';
   }
 
-  const lines: string[] = [];
-
-  for (const block of ocrResult.blocks) {
-    if (!block.lines?.length) {
-      continue;
-    }
-
-    for (const line of block.lines) {
-      const value = line.text?.trim();
-      if (value) {
-        lines.push(value);
-      }
-    }
+  const lines = await TextRecognition(normalizedUri);
+  if (!lines?.length) {
+    return '';
   }
 
-  return lines.join('\n');
+  return lines
+    .map(line => line.trim())
+    .filter(Boolean)
+    .join('\n');
 };

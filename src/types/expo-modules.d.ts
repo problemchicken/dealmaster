@@ -40,18 +40,3 @@ declare module 'expo-image-picker' {
   }): Promise<ImagePickerResult>;
 }
 
-declare module 'expo-mlkit-ocr' {
-  export interface OcrLine {
-    text?: string | null;
-  }
-
-  export interface OcrBlock {
-    lines?: OcrLine[];
-  }
-
-  export interface OcrResult {
-    blocks?: OcrBlock[];
-  }
-
-  export function scanFromUri(uri: string): Promise<OcrResult>;
-}

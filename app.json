@@ -2,6 +2,6 @@
   "name": "dealmaster",
   "displayName": "DealMaster",
   "expo": {
-    "plugins": ["expo-mlkit-ocr", "expo-image-picker"]
+    "plugins": ["expo-image-picker"]
   }
 }
