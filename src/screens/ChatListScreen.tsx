@@ -12,7 +12,8 @@ import {
 } from 'react-native';
 import PrimaryButton from '../components/PrimaryButton';
 import {RootStackParamList} from '../navigation/types';
-import {chatMemory, type ChatSession} from '../services/chatMemory';
+import {chatSessionsService} from '../services/chatSessions';
+import type {ChatSessionListItem} from '../types/chat';
 import {colors} from '../theme/colors';
 
 const formatTimestamp = (timestamp: number): string => {
@@ -26,14 +27,14 @@ const formatTimestamp = (timestamp: number): string => {
 type Props = NativeStackScreenProps<RootStackParamList, 'ChatList'>;
 
 const ChatListScreen: React.FC<Props> = ({navigation}) => {
-  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [sessions, setSessions] = useState<ChatSessionListItem[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
 
   const loadSessions = useCallback(async () => {
     setLoading(true);
     try {
-      await chatMemory.initialize();
-      const data = await chatMemory.listSessions();
+      await chatSessionsService.initialize();
+      const data = await chatSessionsService.listSessions();
       setSessions(data);
     } finally {
       setLoading(false);
@@ -47,52 +48,55 @@ const ChatListScreen: React.FC<Props> = ({navigation}) => {
   );
 
   const handleCreateSession = useCallback(async () => {
-    await chatMemory.initialize();
-    const session = await chatMemory.createSession();
+    const session = await chatSessionsService.createSession();
+    setSessions(prev => [session, ...prev]);
     navigation.navigate('Chat', {
       sessionId: session.id,
-      title: session.title,
+      title: chatSessionsService.getDisplayTitle(session),
     });
   }, [navigation]);
 
   const handleSelectSession = useCallback(
-    (session: ChatSession) => {
+    (session: ChatSessionListItem) => {
       navigation.navigate('Chat', {
         sessionId: session.id,
-        title: session.title,
+        title: chatSessionsService.getDisplayTitle(session),
       });
     },
     [navigation],
   );
 
   const handleDeleteSession = useCallback(async (sessionId: string) => {
-    await chatMemory.deleteSession(sessionId);
+    await chatSessionsService.deleteSession(sessionId);
     setSessions(prev => prev.filter(session => session.id !== sessionId));
   }, []);
 
-  const renderItem = ({item}: {item: ChatSession}) => (
-    <TouchableOpacity
-      style={styles.sessionRow}
-      onPress={() => handleSelectSession(item)}
-      accessibilityRole="button">
-      <View style={styles.sessionHeader}>
-        <Text style={styles.sessionTitle}>{item.title}</Text>
-        <Text style={styles.sessionTimestamp}>{formatTimestamp(item.updatedAt)}</Text>
-      </View>
-      <Text style={styles.sessionPreview} numberOfLines={2}>
-        {item.messages
-          .filter(message => message.role !== 'system')
-          .map(message => message.content)
-          .join(' \u2022 ') || 'No messages yet.'}
-      </Text>
+  const renderItem = ({item}: {item: ChatSessionListItem}) => {
+    const title = chatSessionsService.getDisplayTitle(item);
+    const preview = item.lastMessagePreview ?? 'No messages yet.';
+    return (
       <TouchableOpacity
-        style={styles.deleteButton}
-        onPress={() => handleDeleteSession(item.id)}
+        style={styles.sessionRow}
+        onPress={() => handleSelectSession(item)}
         accessibilityRole="button">
-        <Text style={styles.deleteText}>Delete</Text>
+        <View style={styles.sessionHeader}>
+          <Text style={styles.sessionTitle} numberOfLines={1}>
+            {title}
+          </Text>
+          <Text style={styles.sessionTimestamp}>{formatTimestamp(item.updatedAt)}</Text>
+        </View>
+        <Text style={styles.sessionPreview} numberOfLines={2}>
+          {preview}
+        </Text>
+        <TouchableOpacity
+          style={styles.deleteButton}
+          onPress={() => handleDeleteSession(item.id)}
+          accessibilityRole="button">
+          <Text style={styles.deleteText}>Delete</Text>
+        </TouchableOpacity>
       </TouchableOpacity>
-    </TouchableOpacity>
-  );
+    );
+  };
 
   return (
     <SafeAreaView style={styles.container}>
