@@ -19,7 +19,7 @@ import type {ChatMessage} from '../ai/types';
 import {RootStackParamList} from '../navigation/types';
 import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';
-import {chatMemory, DEFAULT_SESSION_TITLE} from '../services/chatMemory';
+import {chatSessionsService} from '../services/chatSessions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -55,26 +55,27 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
 
-  const persistMessages = useCallback(
-    async (
-      conversation: ChatMessage[],
-      options: {updateTitle?: boolean} = {},
-    ) => {
+  const persistMessages = useCallback(async (conversation: ChatMessage[]) => {
       const currentSessionId = sessionIdRef.current;
       if (!currentSessionId) {
         return;
       }
-      await chatMemory.saveConversation(currentSessionId, conversation);
-      if (options.updateTitle) {
-        const updatedTitle = await chatMemory.updateTitle(
-          currentSessionId,
-          conversation,
-        );
-        navigation.setParams({title: updatedTitle});
+      const metadata = await chatSessionsService.saveConversation(
+        currentSessionId,
+        conversation,
+      );
+      if (!metadata) {
+        return;
       }
-    },
-    [navigation],
-  );
+
+      const hasManualTitle = typeof metadata.title === 'string' && metadata.title.length > 0;
+
+      if (!hasManualTitle) {
+        navigation.setParams({
+          title: chatSessionsService.getDisplayTitle(metadata),
+        });
+      }
+    }, [navigation]);
 
   const updateMessages = useCallback(
     (
@@ -85,9 +86,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         const next = updater(prev);
         messagesRef.current = next;
         if (options.persist !== false) {
-          persistMessages(next, {updateTitle: options.updateTitle}).catch(
-            () => undefined,
-          );
+          persistMessages(next).catch(() => undefined);
         }
         return next;
       });
@@ -103,38 +102,38 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     let isMounted = true;
 
     const ensureSession = async () => {
-      await chatMemory.initialize();
+      await chatSessionsService.initialize();
       if (!isMounted) {
         return;
       }
 
       if (routeSessionId) {
-        const existing = await chatMemory.getSession(routeSessionId);
+        const existing = await chatSessionsService.getSession(routeSessionId);
         if (!isMounted) {
           return;
         }
         if (existing) {
           setSessionId(existing.id);
           updateMessages(() => existing.messages ?? [], {persist: false});
-          if (existing.title !== routeTitle) {
-            navigation.setParams({title: existing.title});
+          const displayTitle = chatSessionsService.getDisplayTitle(existing);
+          if (displayTitle !== routeTitle) {
+            navigation.setParams({title: displayTitle});
           }
           setInitializing(false);
           return;
         }
       }
 
-      const created = await chatMemory.createSession(
-        typeof routeTitle === 'string' && routeTitle.length > 0
-          ? routeTitle
-          : DEFAULT_SESSION_TITLE,
-      );
+      const created = await chatSessionsService.createSession();
       if (!isMounted) {
         return;
       }
       setSessionId(created.id);
       updateMessages(() => created.messages ?? [], {persist: false});
-      navigation.setParams({sessionId: created.id, title: created.title});
+      navigation.setParams({
+        sessionId: created.id,
+        title: chatSessionsService.getDisplayTitle(created),
+      });
       setInitializing(false);
     };
 
