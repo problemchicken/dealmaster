@@ -6,10 +6,13 @@ interface Props extends TouchableOpacityProps {
   title: string;
 }
 
-const PrimaryButton: React.FC<Props> = ({title, style, ...touchableProps}) => {
+const PrimaryButton: React.FC<Props> = ({title, style, disabled, ...touchableProps}) => {
   return (
-    <TouchableOpacity style={[styles.button, style]} {...touchableProps}>
-      <Text style={styles.text}>{title}</Text>
+    <TouchableOpacity
+      style={[styles.button, disabled && styles.disabledButton, style]}
+      disabled={disabled}
+      {...touchableProps}>
+      <Text style={[styles.text, disabled && styles.disabledText]}>{title}</Text>
     </TouchableOpacity>
   );
 };
@@ -25,6 +28,12 @@ const styles = StyleSheet.create({
     color: colors.white,
     fontSize: 16,
     fontWeight: '600',
+  },
+  disabledButton: {
+    backgroundColor: '#cbd5f5',
+  },
+  disabledText: {
+    color: '#475569',
   },
 });
 

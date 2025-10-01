@@ -1,10 +1,12 @@
-import React, {useState} from 'react';
+import React, {useMemo, useState} from 'react';
 import {SafeAreaView, ScrollView, StyleSheet, Switch, Text, View} from 'react-native';
 import {colors} from '../theme/colors';
 import {useAuthStore} from '../store/useAuthStore';
 import PrimaryButton from '../components/PrimaryButton';
 import {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {RootStackParamList} from '../navigation/types';
+import {useSubscriptionStore} from '../store/useSubscriptionStore';
+import {USAGE_LIMITS} from '../subscription/limits';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Settings'>;
 
@@ -12,11 +14,49 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const logout = useAuthStore(state => state.logout);
   const [notificationsEnabled, setNotificationsEnabled] = useState(true);
   const [biometricsEnabled, setBiometricsEnabled] = useState(false);
+  const plan = useSubscriptionStore(state => state.plan);
+  const remainingMessages = useSubscriptionStore(state =>
+    state.remainingQuota('aiMessages'),
+  );
+  const remainingOcr = useSubscriptionStore(state =>
+    state.remainingQuota('ocr'),
+  );
+  const setPlan = useSubscriptionStore(state => state.setPlan);
+
+  const freeQuotas = USAGE_LIMITS.free;
+  const isPro = plan === 'pro';
+
+  const quotaMessage = useMemo(() => {
+    if (isPro) {
+      return 'Pro 方案提供不限次數的 AI 回覆與 OCR 分析。';
+    }
+
+    return `本月剩餘 ${Math.max(0, Math.floor(remainingMessages))}/${freeQuotas.aiMessages} 次 AI 回覆、${Math.max(0, Math.floor(remainingOcr))}/${freeQuotas.ocr} 次 OCR。`;
+  }, [freeQuotas.aiMessages, freeQuotas.ocr, isPro, remainingMessages, remainingOcr]);
+
+  const handleDowngrade = () => {
+    setPlan('free');
+  };
+
+  const handleUpgrade = () => {
+    setPlan('pro');
+  };
 
   return (
     <SafeAreaView style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.title}>Settings</Text>
+
+        <View style={styles.planCard}>
+          <Text style={styles.planLabel}>目前方案</Text>
+          <Text style={styles.planName}>{isPro ? 'DealMaster Pro' : 'DealMaster Free'}</Text>
+          <Text style={styles.planDescription}>{quotaMessage}</Text>
+          <PrimaryButton
+            title={isPro ? '切換回 Free 方案' : '升級至 Pro 方案'}
+            onPress={isPro ? handleDowngrade : handleUpgrade}
+            style={styles.planButton}
+          />
+        </View>
 
         <View style={styles.settingRow}>
           <View>
@@ -47,7 +87,7 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         </View>
 
         <PrimaryButton
-          title="View Deals"
+          title="Back to Copilot"
           onPress={() => navigation.navigate('Home')}
           style={styles.actionButton}
         />
@@ -74,6 +114,37 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: colors.text,
     marginBottom: 24,
+  },
+  planCard: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    marginBottom: 24,
+    shadowColor: colors.text,
+    shadowOffset: {width: 0, height: 6},
+    shadowOpacity: 0.06,
+    shadowRadius: 12,
+    elevation: 3,
+  },
+  planLabel: {
+    fontSize: 12,
+    letterSpacing: 1,
+    textTransform: 'uppercase',
+    color: colors.muted,
+  },
+  planName: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.text,
+    marginTop: 8,
+  },
+  planDescription: {
+    color: colors.muted,
+    marginTop: 8,
+    lineHeight: 20,
+  },
+  planButton: {
+    marginTop: 16,
   },
   settingRow: {
     backgroundColor: colors.white,
