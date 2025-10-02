@@ -32,21 +32,21 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
   const [apiKeyInput, setApiKeyInput] = useState(savedApiKey);
   const {
     plan,
-    dailyQuota,
+    monthlyQuota,
     usedQuota,
     loadSubscription,
     setPlan,
-    resetDailyUsage,
+    resetMonthlyUsage,
     upgradeModalVisible,
     openUpgradeModal,
     closeUpgradeModal,
   } = useSubscriptionStore(state => ({
     plan: state.plan,
-    dailyQuota: state.dailyQuota,
+    monthlyQuota: state.monthlyQuota,
     usedQuota: state.usedQuota,
     loadSubscription: state.loadSubscription,
     setPlan: state.setPlan,
-    resetDailyUsage: state.resetDailyUsage,
+    resetMonthlyUsage: state.resetMonthlyUsage,
     upgradeModalVisible: state.upgradeModalVisible,
     openUpgradeModal: state.openUpgradeModal,
     closeUpgradeModal: state.closeUpgradeModal,
@@ -78,14 +78,14 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
 
   const handleUpgrade = useCallback(async () => {
     await setPlan('pro');
-    await resetDailyUsage();
+    await resetMonthlyUsage();
     closeUpgradeModal();
-  }, [closeUpgradeModal, resetDailyUsage, setPlan]);
+  }, [closeUpgradeModal, resetMonthlyUsage, setPlan]);
 
   const handleDowngrade = useCallback(async () => {
     await setPlan('free');
-    await resetDailyUsage();
-  }, [resetDailyUsage, setPlan]);
+    await resetMonthlyUsage();
+  }, [resetMonthlyUsage, setPlan]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -128,10 +128,10 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           <Text style={styles.subscriptionUsage}>
             {plan === 'pro'
               ? 'Unlimited AI chats and real-time deal alerts.'
-              : `Used ${usedQuota} of ${dailyQuota} free chats today.`}
+              : `Used ${usedQuota} of ${monthlyQuota} free AI requests this month.`}
           </Text>
           <Text style={styles.subscriptionHint}>
-            Your quota refreshes every day at midnight local time.
+            Your quota refreshes on the first day of every month.
           </Text>
           {plan === 'free' ? (
             <PrimaryButton

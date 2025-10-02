@@ -6,6 +6,7 @@ import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
 import ChatScreen from '../screens/ChatScreen';
 import ChatListScreen from '../screens/ChatListScreen';
+import OcrConfirmScreen from '../screens/OcrConfirmScreen';
 import {useAuthStore} from '../store/useAuthStore';
 import type {RootStackParamList} from './types';
 
@@ -31,6 +32,11 @@ const AppNavigator: React.FC = () => {
               options={({route}) => ({
                 title: route.params?.title ?? 'Chat',
               })}
+            />
+            <Stack.Screen
+              name="OcrConfirm"
+              component={OcrConfirmScreen}
+              options={{title: 'OCR 預覽'}}
             />
             <Stack.Screen name="Settings" component={SettingsScreen} />
           </>

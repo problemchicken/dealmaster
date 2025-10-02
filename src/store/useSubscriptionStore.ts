@@ -8,17 +8,17 @@ const USAGE_KEY = 'subscription:usage';
 const RESET_KEY = 'subscription:reset';
 
 const PLAN_QUOTAS: Record<SubscriptionPlan, number> = {
-  free: 5,
-  pro: 1000,
+  free: 3,
+  pro: 1000000,
 };
 
-const getTodayIdentifier = () => {
-  return new Date().toISOString().slice(0, 10);
+const getCurrentMonthIdentifier = () => {
+  return new Date().toISOString().slice(0, 7);
 };
 
 export type SubscriptionState = {
   plan: SubscriptionPlan;
-  dailyQuota: number;
+  monthlyQuota: number;
   usedQuota: number;
   quotaResetAt: string;
   upgradeModalVisible: boolean;
@@ -27,16 +27,16 @@ export type SubscriptionState = {
   loadSubscription: () => Promise<void>;
   recordUsage: (amount?: number) => Promise<void>;
   setPlan: (plan: SubscriptionPlan) => Promise<void>;
-  resetDailyUsage: () => Promise<void>;
+  resetMonthlyUsage: () => Promise<void>;
   openUpgradeModal: () => void;
   closeUpgradeModal: () => void;
 };
 
 export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   plan: 'free',
-  dailyQuota: PLAN_QUOTAS.free,
+  monthlyQuota: PLAN_QUOTAS.free,
   usedQuota: 0,
-  quotaResetAt: getTodayIdentifier(),
+  quotaResetAt: getCurrentMonthIdentifier(),
   upgradeModalVisible: false,
   isInitialized: false,
   isLoading: false,
@@ -47,20 +47,20 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const data = Object.fromEntries(entries);
       const storedPlan = data[PLAN_KEY] === 'pro' ? 'pro' : 'free';
       const quota = PLAN_QUOTAS[storedPlan];
-      const today = getTodayIdentifier();
-      const storedReset = data[RESET_KEY] ?? today;
+      const currentMonth = getCurrentMonthIdentifier();
+      const storedReset = data[RESET_KEY] ?? currentMonth;
       let storedUsageRaw = data[USAGE_KEY];
-      if (storedReset !== today) {
+      if (storedReset !== currentMonth) {
         storedUsageRaw = '0';
         await AsyncStorage.multiSet([
           [USAGE_KEY, '0'],
-          [RESET_KEY, today],
+          [RESET_KEY, currentMonth],
         ]);
       }
       const parsedUsage = storedUsageRaw ? Number.parseInt(storedUsageRaw, 10) : 0;
       set({
         plan: storedPlan,
-        dailyQuota: quota,
+        monthlyQuota: quota,
         usedQuota: Number.isFinite(parsedUsage) ? Math.max(parsedUsage, 0) : 0,
         quotaResetAt: storedReset,
         isInitialized: true,
@@ -69,9 +69,9 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       console.error('Failed to load subscription state', error);
       set({
         plan: 'free',
-        dailyQuota: PLAN_QUOTAS.free,
+        monthlyQuota: PLAN_QUOTAS.free,
         usedQuota: 0,
-        quotaResetAt: getTodayIdentifier(),
+        quotaResetAt: getCurrentMonthIdentifier(),
         isInitialized: true,
       });
     } finally {
@@ -83,49 +83,49 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
     if (state.plan === 'pro') {
       return;
     }
-    const today = getTodayIdentifier();
+    const currentMonth = getCurrentMonthIdentifier();
     let nextUsage = state.usedQuota;
-    if (state.quotaResetAt !== today) {
+    if (state.quotaResetAt !== currentMonth) {
       nextUsage = 0;
       await AsyncStorage.multiSet([
         [USAGE_KEY, '0'],
-        [RESET_KEY, today],
+        [RESET_KEY, currentMonth],
       ]);
     }
-    nextUsage = Math.min(state.dailyQuota, nextUsage + amount);
+    nextUsage = Math.min(state.monthlyQuota, nextUsage + amount);
     await AsyncStorage.setItem(USAGE_KEY, String(nextUsage));
-    await AsyncStorage.setItem(RESET_KEY, today);
-    set({usedQuota: nextUsage, quotaResetAt: today});
-    if (nextUsage >= state.dailyQuota) {
+    await AsyncStorage.setItem(RESET_KEY, currentMonth);
+    set({usedQuota: nextUsage, quotaResetAt: currentMonth});
+    if (nextUsage >= state.monthlyQuota) {
       set({upgradeModalVisible: true});
     }
   },
   setPlan: async (plan: SubscriptionPlan) => {
     const quota = PLAN_QUOTAS[plan];
-    const today = getTodayIdentifier();
+    const currentMonth = getCurrentMonthIdentifier();
     await AsyncStorage.setItem(PLAN_KEY, plan);
     if (plan === 'pro') {
       await AsyncStorage.multiSet([
         [USAGE_KEY, '0'],
-        [RESET_KEY, today],
+        [RESET_KEY, currentMonth],
       ]);
     }
     const nextUsage = plan === 'pro' ? 0 : Math.min(get().usedQuota, quota);
     set({
       plan,
-      dailyQuota: quota,
+      monthlyQuota: quota,
       usedQuota: nextUsage,
-      quotaResetAt: plan === 'pro' ? today : get().quotaResetAt,
+      quotaResetAt: plan === 'pro' ? currentMonth : get().quotaResetAt,
       upgradeModalVisible: false,
     });
   },
-  resetDailyUsage: async () => {
-    const today = getTodayIdentifier();
+  resetMonthlyUsage: async () => {
+    const currentMonth = getCurrentMonthIdentifier();
     await AsyncStorage.multiSet([
       [USAGE_KEY, '0'],
-      [RESET_KEY, today],
+      [RESET_KEY, currentMonth],
     ]);
-    set({usedQuota: 0, quotaResetAt: today});
+    set({usedQuota: 0, quotaResetAt: currentMonth});
   },
   openUpgradeModal: () => set({upgradeModalVisible: true}),
   closeUpgradeModal: () => set({upgradeModalVisible: false}),
