@@ -24,6 +24,7 @@ import {pickImage, extractTextFromImage} from '../ai/ocr';
 import {track} from '../lib/telemetry';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import UpgradeModal from '../components/UpgradeModal';
+import {track as trackEvent} from '../services/telemetry';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -49,26 +50,23 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   const envOverrides = useSettingsStore(state => state.envOverrides);
   const {
     plan,
-    monthlyQuota,
-    usedQuota,
-    recordUsage,
+    consumeChat,
     upgradeModalVisible,
     openUpgradeModal,
     closeUpgradeModal,
     setPlan,
   } = useSubscriptionStore(state => ({
     plan: state.plan,
-    monthlyQuota: state.monthlyQuota,
-    usedQuota: state.usedQuota,
-    recordUsage: state.recordUsage,
+    consumeChat: state.consumeChat,
     upgradeModalVisible: state.upgradeModalVisible,
     openUpgradeModal: state.openUpgradeModal,
     closeUpgradeModal: state.closeUpgradeModal,
     setPlan: state.setPlan,
   }));
+  const canUseChat = useSubscriptionStore(state => state.canUseChat);
+  const canUseOcr = useSubscriptionStore(state => state.canUseOcr);
+  const isQuotaExceeded = useSubscriptionStore(state => state.isQuotaExceeded());
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
-
-  const isQuotaExceeded = plan === 'free' && usedQuota >= monthlyQuota;
 
   const hasApiKey = useMemo(() => {
     const override = envOverrides.GPT5_API_KEY ?? envOverrides.OPENAI_API_KEY;
@@ -125,6 +123,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   const routeSessionId = routeParams.sessionId;
   const routeTitle = routeParams.title;
   const routePendingMessage = routeParams.pendingMessage;
+  const routePendingMessageSource = routeParams.pendingMessageSource;
 
   useEffect(() => {
     let isMounted = true;
@@ -179,8 +178,14 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     [updateMessages],
   );
 
+  type SendOptions = {
+    clearInput?: boolean;
+    skipQuotaCheck?: boolean;
+    shouldConsumeQuota?: boolean;
+  };
+
   const sendUserMessage = useCallback(
-    async (content: string, options?: {clearInput?: boolean}) => {
+    async (content: string, options: SendOptions = {}) => {
       const trimmed = content.trim();
       if (!trimmed || isStreaming || !sessionId) {
         if (options?.clearInput) {
@@ -194,7 +199,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         return;
       }
 
-      if (isQuotaExceeded) {
+      if (!options.skipQuotaCheck && !canUseChat()) {
         openUpgradeModal();
         return;
       }
@@ -202,6 +207,22 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
       setError(null);
       if (options?.clearInput) {
         setInput('');
+      }
+
+      if (options.shouldConsumeQuota !== false) {
+        const consumed = await consumeChat()
+          .then(result => result)
+          .catch(err => {
+            console.error('Failed to record usage', err);
+            return false;
+          });
+
+        if (!consumed) {
+          openUpgradeModal();
+          setIsStreaming(false);
+          abortController.current = null;
+          return;
+        }
       }
 
       const userMessage: ChatMessage = {role: 'user', content: trimmed};
@@ -213,10 +234,6 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
       abortController.current = controller;
 
       let didStream = false;
-
-      await recordUsage().catch(err => {
-        console.error('Failed to record usage', err);
-      });
 
       try {
         const result = await generateChat({
@@ -281,11 +298,11 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     },
     [
       appendMessage,
+      canUseChat,
+      consumeChat,
       hasApiKey,
-      isQuotaExceeded,
       isStreaming,
       openUpgradeModal,
-      recordUsage,
       sessionId,
       updateMessages,
     ],
@@ -304,26 +321,39 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
       return;
     }
     if (pendingMessageRef.current === pending) {
-      navigation.setParams({pendingMessage: undefined});
+      navigation.setParams({
+        pendingMessage: undefined,
+        pendingMessageSource: undefined,
+      });
       return;
     }
     pendingMessageRef.current = pending;
-    sendUserMessage(pending)
+    const skipQuotaCheck = routePendingMessageSource === 'ocr';
+    const shouldConsumeQuota = routePendingMessageSource === 'ocr' ? false : true;
+    sendUserMessage(pending, {
+      skipQuotaCheck,
+      shouldConsumeQuota,
+    })
       .catch(() => undefined)
       .finally(() => {
-        navigation.setParams({pendingMessage: undefined});
+        navigation.setParams({
+          pendingMessage: undefined,
+          pendingMessageSource: undefined,
+        });
       });
   }, [
     initializing,
     isStreaming,
     navigation,
     routePendingMessage,
+    routePendingMessageSource,
     sendUserMessage,
     sessionId,
   ]);
 
   const handleStartOcr = useCallback(async () => {
-    if (isQuotaExceeded) {
+    if (!canUseOcr()) {
+      trackEvent('quota_block', {feature: 'ocr'});
       openUpgradeModal();
       return;
     }
@@ -366,7 +396,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     } finally {
       setIsOcrProcessing(false);
     }
-  }, [isQuotaExceeded, navigation, openUpgradeModal, routeTitle, setError]);
+  }, [canUseOcr, navigation, openUpgradeModal, routeTitle, setError]);
 
   const handleUpgrade = useCallback(async () => {
     await setPlan('pro');
@@ -413,7 +443,8 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     initializing ||
     !sessionId ||
     (!isStreaming && (trimmedInput.length === 0 || isQuotaExceeded));
-  const disableOcrButton = isQuotaExceeded || isOcrProcessing || initializing || isStreaming;
+  const disableOcrButton =
+    !canUseOcr() || isOcrProcessing || initializing || isStreaming;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -484,7 +515,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         </View>
         {isQuotaExceeded ? (
           <Text style={styles.quotaWarning}>
-            免費方案本月額度已用完，升級 Pro 享無限次數。
+            免費方案本月 Chat/OCR 額度已用完，升級 Pro 享無限次數。
           </Text>
         ) : null}
       </KeyboardAvoidingView>

@@ -31,8 +31,8 @@ const UpgradeModal: React.FC<Props> = ({visible, plan, onClose, onUpgrade}) => {
           </Text>
           <Text style={styles.description}>
             {plan === 'pro'
-              ? 'Thanks for supporting DealMaster! Enjoy unlimited chats and exclusive deal alerts.'
-              : 'Unlock unlimited AI chats and priority deal alerts with the Pro plan. Stay ahead with the best savings delivered instantly.'}
+              ? 'Thanks for supporting DealMaster! Enjoy unlimited chats, OCR extractions, and exclusive deal alerts. Chat and OCR share the same quota, and yours is unlimited.'
+              : 'Unlock unlimited AI chats, OCR extractions, and priority deal alerts with the Pro plan. Chat and OCR share the same monthly quota on Free, so upgrade to keep the insights flowing.'}
           </Text>
           {plan !== 'pro' ? (
             <PrimaryButton title="Upgrade now" onPress={onUpgrade} style={styles.ctaButton} />

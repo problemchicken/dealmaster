@@ -1,16 +1,19 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import {create} from 'zustand';
-
-export type SubscriptionPlan = 'free' | 'pro';
+import type {SubscriptionPlan} from '../subscription/types';
+import {
+  PLAN_MONTHLY_QUOTAS,
+  canUseChat as canUseChatHelper,
+  canUseOcr as canUseOcrHelper,
+  getMonthlyQuotaForPlan,
+  onChatConsumed,
+  onOcrConsumed,
+} from '../subscription/limits';
+import {track} from '../services/telemetry';
 
 const PLAN_KEY = 'subscription:plan';
 const USAGE_KEY = 'subscription:usage';
 const RESET_KEY = 'subscription:reset';
-
-const PLAN_QUOTAS: Record<SubscriptionPlan, number> = {
-  free: 3,
-  pro: 1000000,
-};
 
 const getCurrentMonthIdentifier = () => {
   return new Date().toISOString().slice(0, 7);
@@ -25,7 +28,12 @@ export type SubscriptionState = {
   isInitialized: boolean;
   isLoading: boolean;
   loadSubscription: () => Promise<void>;
-  recordUsage: (amount?: number) => Promise<void>;
+  consumeChat: (amount?: number) => Promise<boolean>;
+  consumeOcr: (amount?: number) => Promise<boolean>;
+  consumeQuota: (feature: 'chat' | 'ocr', amount?: number) => Promise<boolean>;
+  canUseChat: () => boolean;
+  canUseOcr: () => boolean;
+  isQuotaExceeded: () => boolean;
   setPlan: (plan: SubscriptionPlan) => Promise<void>;
   resetMonthlyUsage: () => Promise<void>;
   openUpgradeModal: () => void;
@@ -34,7 +42,7 @@ export type SubscriptionState = {
 
 export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   plan: 'free',
-  monthlyQuota: PLAN_QUOTAS.free,
+  monthlyQuota: PLAN_MONTHLY_QUOTAS.free,
   usedQuota: 0,
   quotaResetAt: getCurrentMonthIdentifier(),
   upgradeModalVisible: false,
@@ -46,7 +54,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       const entries = await AsyncStorage.multiGet([PLAN_KEY, USAGE_KEY, RESET_KEY]);
       const data = Object.fromEntries(entries);
       const storedPlan = data[PLAN_KEY] === 'pro' ? 'pro' : 'free';
-      const quota = PLAN_QUOTAS[storedPlan];
+      const quota = getMonthlyQuotaForPlan(storedPlan);
       const currentMonth = getCurrentMonthIdentifier();
       const storedReset = data[RESET_KEY] ?? currentMonth;
       let storedUsageRaw = data[USAGE_KEY];
@@ -69,7 +77,7 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       console.error('Failed to load subscription state', error);
       set({
         plan: 'free',
-        monthlyQuota: PLAN_QUOTAS.free,
+        monthlyQuota: PLAN_MONTHLY_QUOTAS.free,
         usedQuota: 0,
         quotaResetAt: getCurrentMonthIdentifier(),
         isInitialized: true,
@@ -78,30 +86,26 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
       set({isLoading: false});
     }
   },
-  recordUsage: async (amount = 1) => {
+  consumeChat: async (amount = 1) => {
+    return get().consumeQuota('chat', amount);
+  },
+  consumeOcr: async (amount = 1) => {
+    return get().consumeQuota('ocr', amount);
+  },
+  canUseChat: () => {
     const state = get();
-    if (state.plan === 'pro') {
-      return;
-    }
-    const currentMonth = getCurrentMonthIdentifier();
-    let nextUsage = state.usedQuota;
-    if (state.quotaResetAt !== currentMonth) {
-      nextUsage = 0;
-      await AsyncStorage.multiSet([
-        [USAGE_KEY, '0'],
-        [RESET_KEY, currentMonth],
-      ]);
-    }
-    nextUsage = Math.min(state.monthlyQuota, nextUsage + amount);
-    await AsyncStorage.setItem(USAGE_KEY, String(nextUsage));
-    await AsyncStorage.setItem(RESET_KEY, currentMonth);
-    set({usedQuota: nextUsage, quotaResetAt: currentMonth});
-    if (nextUsage >= state.monthlyQuota) {
-      set({upgradeModalVisible: true});
-    }
+    return canUseChatHelper(state.plan, state.usedQuota, state.monthlyQuota);
+  },
+  canUseOcr: () => {
+    const state = get();
+    return canUseOcrHelper(state.plan, state.usedQuota, state.monthlyQuota);
+  },
+  isQuotaExceeded: () => {
+    const state = get();
+    return !canUseChatHelper(state.plan, state.usedQuota, state.monthlyQuota);
   },
   setPlan: async (plan: SubscriptionPlan) => {
-    const quota = PLAN_QUOTAS[plan];
+    const quota = getMonthlyQuotaForPlan(plan);
     const currentMonth = getCurrentMonthIdentifier();
     await AsyncStorage.setItem(PLAN_KEY, plan);
     if (plan === 'pro') {
@@ -129,6 +133,61 @@ export const useSubscriptionStore = create<SubscriptionState>((set, get) => ({
   },
   openUpgradeModal: () => set({upgradeModalVisible: true}),
   closeUpgradeModal: () => set({upgradeModalVisible: false}),
+  consumeQuota: async (feature: 'chat' | 'ocr', amount = 1) => {
+    const state = get();
+    if (state.plan === 'pro') {
+      if (feature === 'ocr') {
+        track('quota_consume', {feature});
+      }
+      return true;
+    }
+
+    const currentMonth = getCurrentMonthIdentifier();
+    let usedQuota = state.usedQuota;
+    if (state.quotaResetAt !== currentMonth) {
+      usedQuota = 0;
+      await AsyncStorage.multiSet([
+        [USAGE_KEY, '0'],
+        [RESET_KEY, currentMonth],
+      ]);
+      set({usedQuota: 0, quotaResetAt: currentMonth});
+    }
+
+    const monthlyQuota = get().monthlyQuota;
+    if (!canUseChatHelper(state.plan, usedQuota, monthlyQuota)) {
+      set({upgradeModalVisible: true});
+      return false;
+    }
+
+    const nextUsage =
+      feature === 'ocr'
+        ? onOcrConsumed(state.plan, usedQuota, monthlyQuota, amount)
+        : onChatConsumed(state.plan, usedQuota, monthlyQuota, amount);
+
+    if (nextUsage === usedQuota) {
+      if (feature === 'ocr') {
+        track('quota_consume', {feature});
+      }
+      return true;
+    }
+
+    await AsyncStorage.multiSet([
+      [USAGE_KEY, String(nextUsage)],
+      [RESET_KEY, currentMonth],
+    ]);
+    set({usedQuota: nextUsage, quotaResetAt: currentMonth});
+
+    if (feature === 'ocr') {
+      track('quota_consume', {feature});
+    }
+
+    if (!canUseChatHelper(state.plan, nextUsage, monthlyQuota)) {
+      set({upgradeModalVisible: true});
+    }
+
+    return true;
+  },
 }));
 
-export const SUBSCRIPTION_PLAN_QUOTAS = PLAN_QUOTAS;
+export const SUBSCRIPTION_PLAN_QUOTAS = PLAN_MONTHLY_QUOTAS;
+export type {SubscriptionPlan};

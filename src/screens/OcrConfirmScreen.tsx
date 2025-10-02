@@ -1,4 +1,4 @@
-import React, {useMemo, useState} from 'react';
+import React, {useCallback, useMemo, useState} from 'react';
 import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import {
   SafeAreaView,
@@ -12,6 +12,9 @@ import {
 import PrimaryButton from '../components/PrimaryButton';
 import {colors} from '../theme/colors';
 import type {RootStackParamList} from '../navigation/types';
+import {useSubscriptionStore} from '../store/useSubscriptionStore';
+import UpgradeModal from '../components/UpgradeModal';
+import {track} from '../services/telemetry';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'OcrConfirm'>;
 
@@ -19,6 +22,23 @@ const OcrConfirmScreen: React.FC<Props> = ({route, navigation}) => {
   const {extractedText, sessionId, title} = route.params;
   const [text, setText] = useState(extractedText);
   const [error, setError] = useState<string | null>(null);
+  const {
+    plan,
+    consumeOcr,
+    canUseOcr,
+    upgradeModalVisible,
+    openUpgradeModal,
+    closeUpgradeModal,
+    setPlan,
+  } = useSubscriptionStore(state => ({
+    plan: state.plan,
+    consumeOcr: state.consumeOcr,
+    canUseOcr: state.canUseOcr,
+    upgradeModalVisible: state.upgradeModalVisible,
+    openUpgradeModal: state.openUpgradeModal,
+    closeUpgradeModal: state.closeUpgradeModal,
+    setPlan: state.setPlan,
+  }));
 
   const trimmed = useMemo(() => text.trim(), [text]);
   const isSubmitDisabled = trimmed.length === 0;
@@ -30,9 +50,32 @@ const OcrConfirmScreen: React.FC<Props> = ({route, navigation}) => {
     setText(value);
   };
 
-  const handleSend = () => {
+  const handleSend = async () => {
     if (trimmed.length === 0) {
       setError('未擷取到文字，請重試或選擇其他圖片。');
+      return;
+    }
+
+    if (!canUseOcr()) {
+      track('quota_block', {feature: 'ocr'});
+      openUpgradeModal();
+      navigation.goBack();
+      return;
+    }
+
+    let consumed = false;
+    try {
+      consumed = await consumeOcr();
+    } catch (err) {
+      console.error('Failed to record OCR usage', err);
+      setError('無法更新使用次數，請稍後再試。');
+      return;
+    }
+
+    if (!consumed) {
+      track('quota_block', {feature: 'ocr'});
+      openUpgradeModal();
+      navigation.goBack();
       return;
     }
 
@@ -40,9 +83,15 @@ const OcrConfirmScreen: React.FC<Props> = ({route, navigation}) => {
       sessionId,
       title,
       pendingMessage: trimmed,
+      pendingMessageSource: 'ocr',
     });
     navigation.goBack();
   };
+
+  const handleUpgrade = useCallback(async () => {
+    await setPlan('pro');
+    closeUpgradeModal();
+  }, [closeUpgradeModal, setPlan]);
 
   return (
     <SafeAreaView style={styles.container}>
@@ -68,16 +117,22 @@ const OcrConfirmScreen: React.FC<Props> = ({route, navigation}) => {
             如果沒有成功擷取文字，請返回重新選擇圖片。
           </Text>
         ) : null}
-        <PrimaryButton
-          title="送出"
-          onPress={handleSend}
-          disabled={isSubmitDisabled}
-          style={styles.submitButton}
-        />
-        <TouchableOpacity onPress={() => navigation.goBack()} style={styles.secondaryAction}>
-          <Text style={styles.secondaryActionText}>重新選擇圖片</Text>
-        </TouchableOpacity>
-      </ScrollView>
+      <PrimaryButton
+        title="送出"
+        onPress={handleSend}
+        disabled={isSubmitDisabled}
+        style={styles.submitButton}
+      />
+      <TouchableOpacity onPress={() => navigation.goBack()} style={styles.secondaryAction}>
+        <Text style={styles.secondaryActionText}>重新選擇圖片</Text>
+      </TouchableOpacity>
+    </ScrollView>
+      <UpgradeModal
+        visible={upgradeModalVisible}
+        plan={plan}
+        onClose={closeUpgradeModal}
+        onUpgrade={handleUpgrade}
+      />
     </SafeAreaView>
   );
 };
