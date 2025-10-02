@@ -23,7 +23,7 @@ import {chatSessionsService} from '../services/chatSessions';
 import {pickImage, extractTextFromImage} from '../ai/ocr';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import UpgradeModal from '../components/UpgradeModal';
-import {track} from '../services/telemetry';
+import {track as trackEvent} from '../services/telemetry';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -352,7 +352,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
 
   const handleStartOcr = useCallback(async () => {
     if (!canUseOcr()) {
-      track('quota_block', {feature: 'ocr'});
+      trackEvent('quota_block', {feature: 'ocr'});
       openUpgradeModal();
       return;
     }
