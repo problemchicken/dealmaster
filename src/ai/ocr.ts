@@ -1,6 +1,8 @@
 import {Alert, Platform} from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 
+import {getOcrProvider} from './ocr/provider';
+
 export type PickedImage = {
   uri: string;
   width: number;
@@ -76,8 +78,9 @@ export const pickImage = async (): Promise<PickedImage | null> => {
   return normalizeAsset(result.assets[0]);
 };
 
-export async function extractTextFromImage(_uri: string): Promise<string> {
-  return '';
+export async function extractTextFromImage(uri: string): Promise<string> {
+  const provider = getOcrProvider();
+  return provider.extractText(uri);
 }
 
 export default extractTextFromImage;
