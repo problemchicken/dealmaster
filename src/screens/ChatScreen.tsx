@@ -21,6 +21,7 @@ import {useSettingsStore} from '../store/useSettingsStore';
 import {getEnvVar} from '../utils/env';
 import {chatSessionsService} from '../services/chatSessions';
 import {pickImage, extractTextFromImage} from '../ai/ocr';
+import {track} from '../lib/telemetry';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import UpgradeModal from '../components/UpgradeModal';
 
@@ -332,20 +333,25 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     try {
       const image = await pickImage();
       if (!image) {
+        track('ocr_cancel', {source: 'ui'});
         return;
       }
 
-      const extracted = await extractTextFromImage(image.uri);
-      if (!extracted) {
-        setError('未能擷取到文字，請重試或更換圖片。');
-        return;
-      }
+      track('ocr_start', {source: 'ui', uriPresent: Boolean(image.uri)});
 
-      const text = extracted.trim();
+      const result = await extractTextFromImage(image.uri);
+      const text = (result.text ?? '').trim();
       if (!text) {
+        track('ocr_empty', {source: 'ui', meta: result.meta});
         setError('未能擷取到文字，請重試或更換圖片。');
         return;
       }
+
+      track('ocr_success', {
+        source: 'ui',
+        chars: text.length,
+        meta: result.meta,
+      });
 
       navigation.navigate('OcrConfirm', {
         extractedText: text,
@@ -355,6 +361,7 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     } catch (err) {
       const message = err instanceof Error ? err.message : 'Unknown error';
       setError(`OCR 失敗：${message}`);
+      track('ocr_error', {source: 'ui', message});
       console.error('Failed to process OCR', err);
     } finally {
       setIsOcrProcessing(false);
