@@ -127,11 +127,11 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
           </Text>
           <Text style={styles.subscriptionUsage}>
             {plan === 'pro'
-              ? 'Unlimited AI chats and real-time deal alerts.'
-              : `Used ${usedQuota} of ${monthlyQuota} free AI requests this month.`}
+              ? 'Unlimited AI chats, OCR extractions, and real-time deal alerts.'
+              : `Used ${usedQuota} of ${monthlyQuota} free chat/OCR requests this month.`}
           </Text>
           <Text style={styles.subscriptionHint}>
-            Your quota refreshes on the first day of every month.
+            Chat and OCR share the same monthly quota, which refreshes on the first day of every month.
           </Text>
           {plan === 'free' ? (
             <PrimaryButton

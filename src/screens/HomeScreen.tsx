@@ -33,6 +33,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     openUpgradeModal,
     closeUpgradeModal,
     setPlan,
+    canUseChat,
   } = useSubscriptionStore(state => ({
     plan: state.plan,
     monthlyQuota: state.monthlyQuota,
@@ -42,6 +43,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     openUpgradeModal: state.openUpgradeModal,
     closeUpgradeModal: state.closeUpgradeModal,
     setPlan: state.setPlan,
+    canUseChat: state.canUseChat,
   }));
 
   useEffect(() => {
@@ -50,40 +52,42 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
     });
   }, [loadSubscription]);
 
+  const hasChatQuota = canUseChat();
+
   const quotaInfo = useMemo(() => {
     if (plan === 'pro') {
       return {
         isQuotaExceeded: false,
-        remainingQuotaLabel: 'Unlimited chats with Pro plan',
+        remainingQuotaLabel: 'Unlimited chats and OCR extractions with Pro plan',
         bannerStyle: styles.subscriptionBannerPro,
         title: 'Pro plan active',
-        message: 'Enjoy unlimited AI chats and premium deal alerts.',
+        message: 'Enjoy unlimited AI chats, OCR extractions, and premium deal alerts.',
       } as const;
     }
 
     const remaining = Math.max(monthlyQuota - usedQuota, 0);
-    const isQuotaExceeded = remaining === 0;
+    const isQuotaExceeded = !hasChatQuota || remaining === 0;
     return {
       isQuotaExceeded,
       remainingQuotaLabel: isQuotaExceeded
-        ? "You've reached this month's free AI limit."
-        : `You can start ${remaining} more AI request${remaining === 1 ? '' : 's'} this month.`,
+        ? "You've reached this month's free chat/OCR quota."
+        : `You can start ${remaining} more chat or OCR request${remaining === 1 ? '' : 's'} this month.`,
       bannerStyle: isQuotaExceeded
         ? styles.subscriptionBannerWarning
         : styles.subscriptionBannerInfo,
       title: isQuotaExceeded ? 'Monthly free limit reached' : 'Free plan usage',
       message: isQuotaExceeded
-        ? 'Upgrade to keep using DealMaster AI this month.'
-        : 'Upgrade to Pro for unlimited AI chats and faster deal insights.',
+        ? 'Upgrade to keep using DealMaster AI (chat + OCR) this month.'
+        : 'Upgrade to Pro for unlimited AI chats and lightning-fast OCR extractions.',
     } as const;
-  }, [plan, monthlyQuota, usedQuota]);
+  }, [hasChatQuota, plan, monthlyQuota, usedQuota]);
 
   const handleLogout = () => {
     logout();
   };
 
   const handleNavigateToChat = () => {
-    if (quotaInfo.isQuotaExceeded) {
+    if (!canUseChat()) {
       openUpgradeModal();
       return;
     }
@@ -135,7 +139,7 @@ const HomeScreen: React.FC<Props> = ({navigation}) => {
       />
       {quotaInfo.isQuotaExceeded ? (
         <Text style={styles.quotaHint}>
-          Upgrade your plan to keep using DealMaster AI this month.
+          Upgrade your plan to keep using DealMaster AI chat and OCR this month.
         </Text>
       ) : null}
       <FlatList

@@ -32,4 +32,5 @@ export interface ChatScreenParams {
   sessionId?: string;
   title?: string;
   pendingMessage?: string;
+  pendingMessageSource?: 'ocr' | 'user';
 }
