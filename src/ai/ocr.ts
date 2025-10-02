@@ -76,64 +76,8 @@ export const pickImage = async (): Promise<PickedImage | null> => {
   return normalizeAsset(result.assets[0]);
 };
 
-const prepareOcrUri = (value: string): string => {
-  if (!value) {
-    return '';
-  }
-
-  if (Platform.OS === 'ios') {
-    return value.replace(/^file:\/\//, '');
-  }
-
-  return value;
-};
-
-export async function ocrImageToText(uri: string): Promise<string[]> {
-  const normalizedUri = prepareOcrUri(uri);
-  if (!normalizedUri) {
-    return [];
-  }
-
-  try {
-    const rnTextRecog = require('react-native-text-recognition') as
-      | ((path: string) => Promise<string[]>)
-      | undefined;
-    if (typeof rnTextRecog === 'function') {
-      const lines = await rnTextRecog(normalizedUri);
-      if (Array.isArray(lines)) {
-        return lines;
-      }
-    }
-  } catch {
-    // no-op: fall back to other integrations or stub
-  }
-
-  try {
-    const mlkit = require('expo-mlkit-ocr') as
-      | {scanFromUriAsync?: (u: string) => Promise<{text: string}[]>}
-      | undefined;
-    if (mlkit?.scanFromUriAsync) {
-      const blocks = await mlkit.scanFromUriAsync(normalizedUri);
-      if (Array.isArray(blocks)) {
-        return blocks.map(block => block.text).filter(Boolean);
-      }
-    }
-  } catch {
-    // no-op: fall back to stub
-  }
-
-  return [];
+export async function extractTextFromImage(_uri: string): Promise<string> {
+  return '';
 }
 
-export const extractText = async (uri: string): Promise<string> => {
-  const lines = await ocrImageToText(uri);
-  if (!lines.length) {
-    return '';
-  }
-  return lines
-    .map(line => line.trim())
-    .filter(Boolean)
-    .join('\n');
-};
-
-export default ocrImageToText;
+export default extractTextFromImage;
