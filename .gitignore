@@ -4,6 +4,9 @@
 # React Native
 /android
 /ios
+!/ios
+!/ios/Dealmaster/
+!/ios/Dealmaster/**
 /expo
 
 # Logs

@@ -3,9 +3,12 @@ import type {NativeStackScreenProps} from '@react-navigation/native-stack';
 import type {ListRenderItem} from 'react-native';
 import {
   ActivityIndicator,
+  Alert,
   FlatList,
   KeyboardAvoidingView,
+  Linking,
   Platform,
+  Pressable,
   SafeAreaView,
   StyleSheet,
   Text,
@@ -25,6 +28,12 @@ import {track} from '../lib/telemetry';
 import {useSubscriptionStore} from '../store/useSubscriptionStore';
 import UpgradeModal from '../components/UpgradeModal';
 import {track as trackEvent} from '../services/telemetry';
+import {
+  addSttListener,
+  getLastFinalResult,
+  startTranscription,
+  stopTranscription,
+} from '../ai/stt';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Chat'>;
 
@@ -32,6 +41,13 @@ const SYSTEM_PROMPT: ChatMessage = {
   role: 'system',
   content:
     'You are DealMaster AI, an enthusiastic shopping assistant that helps users discover amazing deals.',
+};
+
+const formatDuration = (ms: number): string => {
+  const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 };
 
 const ChatScreen: React.FC<Props> = ({route, navigation}) => {
@@ -67,6 +83,13 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   const canUseOcr = useSubscriptionStore(state => state.canUseOcr);
   const isQuotaExceeded = useSubscriptionStore(state => state.isQuotaExceeded());
   const [isOcrProcessing, setIsOcrProcessing] = useState(false);
+  const [isSttActive, setIsSttActive] = useState(false);
+  const [sttElapsedMs, setSttElapsedMs] = useState(0);
+  const sttInteractionRef = useRef<'idle' | 'holdActive' | 'holdCompleted'>('idle');
+  const sttStartTimestampRef = useRef<number | null>(null);
+  const sttLocaleRef = useRef<string | null>(null);
+  const sttLastResultRef = useRef<string | null>(null);
+  const sttLastDurationRef = useRef<number | undefined>(undefined);
 
   const hasApiKey = useMemo(() => {
     const override = envOverrides.GPT5_API_KEY ?? envOverrides.OPENAI_API_KEY;
@@ -79,6 +102,104 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   useEffect(() => {
     sessionIdRef.current = sessionId;
   }, [sessionId]);
+
+  useEffect(() => {
+    const unsubscribe = addSttListener(event => {
+      if (event.type === 'result') {
+        setInput(event.text);
+        if (!event.isFinal) {
+          setIsSttActive(true);
+          if (sttStartTimestampRef.current == null) {
+            sttStartTimestampRef.current = Date.now();
+          }
+          if (event.locale) {
+            sttLocaleRef.current = event.locale;
+          }
+        } else {
+          const startedAt = sttStartTimestampRef.current;
+          const computedDuration =
+            event.durationMs ??
+            (startedAt != null
+              ? Date.now() - startedAt
+              : sttLastDurationRef.current);
+          setIsSttActive(false);
+          sttInteractionRef.current = 'idle';
+          sttLocaleRef.current = event.locale ?? sttLocaleRef.current;
+          sttLastResultRef.current = event.text;
+          sttLastDurationRef.current =
+            computedDuration ?? sttLastDurationRef.current;
+          setSttElapsedMs(computedDuration ?? 0);
+          sttStartTimestampRef.current = null;
+        }
+        return;
+      }
+
+      if (event.type === 'permission_denied') {
+        sttInteractionRef.current = 'idle';
+        sttStartTimestampRef.current = null;
+        setIsSttActive(false);
+        setSttElapsedMs(0);
+        sttLastResultRef.current = null;
+        sttLastDurationRef.current = undefined;
+        sttLocaleRef.current = null;
+        const openSettings = () => {
+          if (typeof Linking.openSettings === 'function') {
+            Linking.openSettings().catch(() => {
+              Linking.openURL('app-settings:').catch(() => undefined);
+            });
+            return;
+          }
+          Linking.openURL('app-settings:').catch(() => undefined);
+        };
+        Alert.alert('需要權限', '請前往設定開啟麥克風與語音辨識權限。', [
+          {text: '取消', style: 'cancel'},
+          {text: '前往設定', onPress: openSettings},
+        ]);
+        return;
+      }
+
+      if (event.type === 'error') {
+        sttInteractionRef.current = 'idle';
+        sttStartTimestampRef.current = null;
+        setIsSttActive(false);
+        setSttElapsedMs(0);
+        sttLastResultRef.current = null;
+        sttLastDurationRef.current = undefined;
+        sttLocaleRef.current = null;
+        const message = event.message ?? '請稍後再試。';
+        Alert.alert('語音輸入失敗', message);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isSttActive) {
+      setSttElapsedMs(0);
+      return;
+    }
+
+    const interval = setInterval(() => {
+      if (sttStartTimestampRef.current != null) {
+        setSttElapsedMs(Date.now() - sttStartTimestampRef.current);
+      }
+    }, 200);
+
+    return () => {
+      clearInterval(interval);
+    };
+  }, [isSttActive]);
+
+  useEffect(() => {
+    return () => {
+      if (Platform.OS === 'ios') {
+        stopTranscription().catch(() => undefined);
+      }
+    };
+  }, []);
 
   const persistMessages = useCallback(async (conversation: ChatMessage[]) => {
       const currentSessionId = sessionIdRef.current;
@@ -225,9 +346,24 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         }
       }
 
+      const wasSttMessage =
+        sttLastResultRef.current != null &&
+        trimmed === sttLastResultRef.current.trim();
+
       const userMessage: ChatMessage = {role: 'user', content: trimmed};
       const conversation = [...messagesRef.current, userMessage];
       appendMessage(userMessage, {updateTitle: true});
+      if (wasSttMessage) {
+        trackEvent('stt_send', {
+          platform: Platform.OS,
+          locale: sttLocaleRef.current ?? undefined,
+          duration_ms: sttLastDurationRef.current,
+          chars: trimmed.length,
+        });
+      }
+      sttLastResultRef.current = null;
+      sttLastDurationRef.current = undefined;
+
       setIsStreaming(true);
 
       const controller = new AbortController();
@@ -398,6 +534,114 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
     }
   }, [canUseOcr, navigation, openUpgradeModal, routeTitle, setError]);
 
+  const startVoiceInput = useCallback(async () => {
+    if (isSttActive) {
+      return;
+    }
+
+    if (Platform.OS === 'android') {
+      await startTranscription();
+      return;
+    }
+
+    try {
+      const locale = await startTranscription();
+      sttStartTimestampRef.current = Date.now();
+      sttLocaleRef.current = locale ?? null;
+      sttLastResultRef.current = null;
+      sttLastDurationRef.current = undefined;
+      setSttElapsedMs(0);
+      setIsSttActive(true);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      Alert.alert('語音輸入失敗', message);
+      sttInteractionRef.current = 'idle';
+      sttStartTimestampRef.current = null;
+      setIsSttActive(false);
+      setSttElapsedMs(0);
+    }
+  }, [isSttActive]);
+
+  const stopVoiceInput = useCallback(async () => {
+    if (Platform.OS === 'android') {
+      await stopTranscription();
+      return;
+    }
+
+    const startedAt = sttStartTimestampRef.current;
+
+    try {
+      const finalText = await stopTranscription();
+      const finalResult = getLastFinalResult();
+      if (finalResult) {
+        sttLocaleRef.current = finalResult.locale ?? sttLocaleRef.current;
+        sttLastDurationRef.current =
+          finalResult.durationMs ??
+          (startedAt != null ? Date.now() - startedAt : sttLastDurationRef.current);
+        sttLastResultRef.current = finalResult.text;
+        setInput(finalResult.text);
+      } else if (typeof finalText === 'string') {
+        sttLastResultRef.current = finalText;
+        sttLastDurationRef.current =
+          startedAt != null ? Date.now() - startedAt : sttLastDurationRef.current;
+        setInput(finalText);
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : 'Unknown error';
+      Alert.alert('語音輸入失敗', message);
+    } finally {
+      sttInteractionRef.current = 'idle';
+      sttStartTimestampRef.current = null;
+      setIsSttActive(false);
+      setSttElapsedMs(0);
+    }
+  }, [setInput]);
+
+  const handleMicLongPress = useCallback(() => {
+    if (isStreaming || initializing) {
+      return;
+    }
+
+    sttInteractionRef.current = 'holdActive';
+    startVoiceInput().catch(() => undefined);
+  }, [initializing, isStreaming, startVoiceInput]);
+
+  const handleMicPressOut = useCallback(() => {
+    if (sttInteractionRef.current === 'holdActive') {
+      stopVoiceInput().catch(() => undefined);
+      sttInteractionRef.current = 'holdCompleted';
+    }
+  }, [stopVoiceInput]);
+
+  const handleMicPress = useCallback(() => {
+    if (sttInteractionRef.current === 'holdCompleted') {
+      sttInteractionRef.current = 'idle';
+      return;
+    }
+
+    if (isStreaming || initializing) {
+      return;
+    }
+
+    if (isSttActive) {
+      stopVoiceInput().catch(() => undefined);
+    } else {
+      sttInteractionRef.current = 'idle';
+      startVoiceInput().catch(() => undefined);
+    }
+  }, [initializing, isStreaming, isSttActive, startVoiceInput, stopVoiceInput]);
+
+  const handleChangeInput = useCallback((text: string) => {
+    setInput(text);
+    if (
+      sttLastResultRef.current &&
+      text.trim() !== sttLastResultRef.current.trim()
+    ) {
+      sttLastResultRef.current = null;
+      sttLastDurationRef.current = undefined;
+    }
+  }, []);
+
   const handleUpgrade = useCallback(async () => {
     await setPlan('pro');
     closeUpgradeModal();
@@ -410,6 +654,16 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   };
 
   const handleClear = () => {
+    if (isSttActive) {
+      stopVoiceInput().catch(() => undefined);
+    }
+    sttLastResultRef.current = null;
+    sttLastDurationRef.current = undefined;
+    sttLocaleRef.current = null;
+    sttStartTimestampRef.current = null;
+    sttInteractionRef.current = 'idle';
+    setIsSttActive(false);
+    setSttElapsedMs(0);
     abortController.current?.abort();
     abortController.current = null;
     setIsStreaming(false);
@@ -439,12 +693,18 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
   };
 
   const trimmedInput = input.trim();
+  const recordingDurationLabel = useMemo(
+    () => formatDuration(sttElapsedMs),
+    [sttElapsedMs],
+  );
   const disableSendButton =
     initializing ||
     !sessionId ||
+    isSttActive ||
     (!isStreaming && (trimmedInput.length === 0 || isQuotaExceeded));
   const disableOcrButton =
     !canUseOcr() || isOcrProcessing || initializing || isStreaming;
+  const disableMicButton = initializing || isStreaming;
 
   return (
     <SafeAreaView style={styles.container}>
@@ -481,15 +741,39 @@ const ChatScreen: React.FC<Props> = ({route, navigation}) => {
         />
         {error && <Text style={styles.errorText}>{error}</Text>}
         <View style={styles.inputRow}>
-          <TextInput
-            value={input}
-            onChangeText={setInput}
-            placeholder="Ask about the best deals..."
-            style={styles.input}
-            multiline
-            editable={!isStreaming}
-            accessibilityLabel="Chat input"
-          />
+          <View style={styles.inputWrapper}>
+            <TextInput
+              value={input}
+              onChangeText={handleChangeInput}
+              placeholder="Ask about the best deals..."
+              style={[styles.input, isSttActive && styles.inputRecording]}
+              multiline
+              editable={!isStreaming && !isSttActive}
+              accessibilityLabel="Chat input"
+            />
+            {isSttActive ? (
+              <View style={styles.recordingIndicator}>
+                <View style={styles.recordingDot} />
+                <Text style={styles.recordingText}>{recordingDurationLabel}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="語音輸入"
+            accessibilityHint="長按開始語音輸入，放開以結束"
+            disabled={disableMicButton}
+            onLongPress={handleMicLongPress}
+            onPressOut={handleMicPressOut}
+            onPress={handleMicPress}
+            delayLongPress={150}
+            style={({pressed}) => [
+              styles.micButton,
+              (isSttActive || pressed) ? styles.micButtonActive : undefined,
+              disableMicButton ? styles.micButtonDisabled : undefined,
+            ]}>
+            <Text style={styles.micText}>{isSttActive ? '聆聽中' : '語音'}</Text>
+          </Pressable>
           <TouchableOpacity
             onPress={handleStartOcr}
             style={[styles.ocrButton, disableOcrButton && styles.ocrButtonDisabled]}
@@ -625,6 +909,10 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
     paddingBottom: 24,
   },
+  inputWrapper: {
+    flex: 1,
+    position: 'relative',
+  },
   input: {
     flex: 1,
     minHeight: 48,
@@ -634,9 +922,59 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     paddingHorizontal: 16,
     paddingVertical: 12,
+    paddingRight: 72,
     fontSize: 15,
     color: colors.text,
     backgroundColor: colors.white,
+  },
+  inputRecording: {
+    borderColor: colors.primary,
+  },
+  recordingIndicator: {
+    position: 'absolute',
+    right: 12,
+    bottom: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#eef2ff',
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  recordingDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.primary,
+    marginRight: 6,
+  },
+  recordingText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  micButton: {
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+    borderRadius: 16,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 12,
+    backgroundColor: colors.white,
+  },
+  micButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: '#eef2ff',
+  },
+  micButtonDisabled: {
+    opacity: 0.5,
+  },
+  micText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
   },
   ocrButton: {
     borderWidth: 1,
