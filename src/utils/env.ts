@@ -1,9 +1,47 @@
 import type {EnvOverrides} from '../store/useSettingsStore';
 import {selectEnvOverrides, useSettingsStore} from '../store/useSettingsStore';
 
+type ExpoConstantsLike = {
+  [key: string]: unknown;
+  expoConfig?: {extra?: Record<string, unknown> | null | undefined} | null | undefined;
+  manifest?: {extra?: Record<string, unknown> | null | undefined} | null | undefined;
+  manifest2?: {extra?: Record<string, unknown> | null | undefined} | null | undefined;
+};
+
 type MaybeRecord = Record<string, unknown> | null | undefined;
 
 const normalizeName = (name: string): string => name.trim().toUpperCase();
+
+let hasAttemptedExpoConstantsLoad = false;
+let cachedExpoConstants: ExpoConstantsLike | undefined;
+
+const loadExpoConstantsSafely = (): ExpoConstantsLike | undefined => {
+  if (hasAttemptedExpoConstantsLoad) {
+    return cachedExpoConstants;
+  }
+
+  hasAttemptedExpoConstantsLoad = true;
+
+  try {
+    if (typeof require !== 'function') {
+      return undefined;
+    }
+
+    const moduleExports = require('expo-constants');
+    const constants = (moduleExports?.default ?? moduleExports) as ExpoConstantsLike | undefined;
+
+    if (constants && typeof constants === 'object') {
+      cachedExpoConstants = constants;
+      return cachedExpoConstants;
+    }
+  } catch {
+    cachedExpoConstants = undefined;
+    return undefined;
+  }
+
+  cachedExpoConstants = undefined;
+  return undefined;
+};
 
 const readFromRecord = (record: MaybeRecord, name: string): string | undefined => {
   if (!record || typeof record !== 'object') {
@@ -60,7 +98,9 @@ const readFromRecord = (record: MaybeRecord, name: string): string | undefined =
 
 const readFromExpoGlobals = (name: string): string | undefined => {
   const globalAny = globalThis as Record<string, unknown>;
+  const expoConstants = loadExpoConstantsSafely();
   const candidates: unknown[] = [
+    expoConstants,
     globalAny?.Expo && (globalAny.Expo as Record<string, unknown>).Constants,
     globalAny?.Constants,
     globalAny?.ExpoConstants,
