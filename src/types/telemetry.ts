@@ -1,3 +1,22 @@
+// STT events
+export type SttTelemetryEvent =
+  | 'stt_open'
+  | 'stt_partial'
+  | 'stt_final'
+  | 'stt_error'
+  | 'stt_permission_denied'
+  | 'stt_send';
+
+export type SttTelemetryPayload = {
+  platform: string;
+  locale?: string | null;
+  duration_ms?: number;
+  chars?: number;
+  error_code?: string;
+  message?: string;
+};
+
+// OCR events
 export type OcrTelemetryEvent =
   | 'ocr_open'
   | 'ocr_extract_ok'
@@ -6,28 +25,9 @@ export type OcrTelemetryEvent =
   | 'ocr_native_fallback';
 
 export type OcrPlatform = 'ios' | 'android';
-export type OcrProvider = 'visionkit' | 'mlkit' | 'stub';
+export type OcrProvider = 'visionKit' | 'mlkit' | 'stub';
 
 export interface OcrBaseTelemetryProps {
   platform: OcrPlatform;
-  native_flag: boolean;
   provider: OcrProvider;
-  duration_ms?: number;
 }
-
-export interface OcrExtractTelemetryProps extends OcrBaseTelemetryProps {
-  text_length: number;
-  duration_ms: number;
-  error_code?: string;
-}
-
-export type OcrTelemetryPropsMap = {
-  ocr_open: OcrBaseTelemetryProps;
-  ocr_extract_ok: OcrExtractTelemetryProps;
-  ocr_extract_empty: OcrExtractTelemetryProps & {text_length: 0};
-  ocr_quota_blocked: OcrBaseTelemetryProps & {error_code?: string};
-  ocr_native_fallback: OcrBaseTelemetryProps & {error_code: string};
-};
-
-export type OcrTelemetryProps<E extends OcrTelemetryEvent> =
-  OcrTelemetryPropsMap[E];
