@@ -81,6 +81,26 @@ class SpeechModule: RCTEventEmitter {
     emitTelemetry(event: "stt_error", payload: ["message": error.localizedDescription])
   }
 
+  private func permissionStatus(
+    speech status: SFSpeechRecognizerAuthorizationStatus,
+    micPermission: AVAudioSession.RecordPermission
+  ) -> String {
+    switch (status, micPermission) {
+    case (.authorized, .granted):
+      return "granted"
+    case (.denied, _), (.restricted, _), (_, .denied):
+      return "blocked"
+    default:
+      return "denied"
+    }
+  }
+
+  private func currentPermissionStatus() -> String {
+    let speechStatus = SFSpeechRecognizer.authorizationStatus()
+    let micStatus = AVAudioSession.sharedInstance().recordPermission
+    return permissionStatus(speech: speechStatus, micPermission: micStatus)
+  }
+
   @objc
   func startTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
@@ -157,6 +177,43 @@ class SpeechModule: RCTEventEmitter {
     self.resolve = resolve
     self.reject = reject
     recognitionRequest?.endAudio()
+  }
+
+  @objc
+  func cancelTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
+                          rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard recognitionTask != nil else {
+      resolve("")
+      return
+    }
+    isUserInitiatedStop = true
+    self.resolve = resolve
+    self.reject = reject
+    recognitionTask?.cancel()
+  }
+
+  @objc
+  func getPermissionStatus(_ resolve: @escaping RCTPromiseResolveBlock,
+                           rejecter _: @escaping RCTPromiseRejectBlock) {
+    resolve(currentPermissionStatus())
+  }
+
+  @objc
+  func requestPermission(_ resolve: @escaping RCTPromiseResolveBlock,
+                         rejecter _: @escaping RCTPromiseRejectBlock) {
+    SFSpeechRecognizer.requestAuthorization { [weak self] speechStatus in
+      guard let self else { return }
+
+      AVAudioSession.sharedInstance().requestRecordPermission { granted in
+        DispatchQueue.main.async {
+          let recordPermission: AVAudioSession.RecordPermission = granted ? .granted : .denied
+          if speechStatus != .authorized || !granted {
+            self.emitPermissionDenied()
+          }
+          resolve(self.permissionStatus(speech: speechStatus, micPermission: recordPermission))
+        }
+      }
+    }
   }
 
   private func handleTaskCompletion(error: Error?) {
