@@ -18,8 +18,7 @@ export type SpeechPermissionStatus =
 type TranscriptionEvent = {
   text: string;
   isFinal: boolean;
-  duration: number;
-  chars: number;
+  duration?: number;
 };
 
 type ErrorEvent = {
@@ -74,39 +73,41 @@ const basePayload = (): BaseTelemetryProps => ({
   provider: STT_PROVIDER,
 });
 
-const resolveTextLength = ({text, chars}: TranscriptionEvent): number => {
-  if (typeof chars === 'number' && Number.isFinite(chars)) {
-    return chars;
-  }
-  return text.length;
+const resolveTextLength = ({text}: TranscriptionEvent): number => text.length;
+
+const NORMALIZED_ERROR_CODE_MAP: Record<string, NormalizedErrorCode> = {
+  permission_denied: 'permission_denied',
+  timeout: 'timeout',
+  network_failure: 'network_failure',
+  quota_exhausted: 'quota_exhausted',
+  native_module_unavailable: 'native_module_unavailable',
+  no_speech_detected: 'no_speech_detected',
+  no_text_detected: 'no_text_detected',
+  transient_native_failure: 'transient_native_failure',
+  unavailable: 'native_module_unavailable',
+  module_unavailable: 'native_module_unavailable',
+  permission_request_failed: 'transient_native_failure',
+  '3': 'transient_native_failure',
+  '4': 'transient_native_failure',
+  '5': 'transient_native_failure',
+  '1': 'network_failure',
+  '2': 'network_failure',
+  '6': 'timeout',
+  '7': 'no_speech_detected',
+  '8': 'transient_native_failure',
+  '9': 'permission_denied',
 };
 
-const normalizedErrorCodes = new Set<NormalizedErrorCode>([
-  'permission_denied',
-  'timeout',
-  'network_failure',
-  'quota_exhausted',
-  'native_module_unavailable',
-  'no_speech_detected',
-  'no_text_detected',
-  'transient_native_failure',
-]);
-
-const normalizeErrorCode = (
-  code?: string,
-): NormalizedErrorCode => {
-  if (code && normalizedErrorCodes.has(code as NormalizedErrorCode)) {
-    return code as NormalizedErrorCode;
+const normalizeErrorCode = (code?: string): NormalizedErrorCode => {
+  if (!code) {
+    return 'transient_native_failure';
   }
 
-  switch (code) {
-    case 'module_unavailable':
-      return 'native_module_unavailable';
-    case 'permission_request_failed':
-      return 'transient_native_failure';
-    default:
-      return 'transient_native_failure';
+  if (code in NORMALIZED_ERROR_CODE_MAP) {
+    return NORMALIZED_ERROR_CODE_MAP[code];
   }
+
+  return 'transient_native_failure';
 };
 
 let partialSequenceId = 0;
