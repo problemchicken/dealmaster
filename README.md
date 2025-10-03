@@ -54,6 +54,8 @@ A React Native starter project bootstrapped with TypeScript that showcases a sim
 
 Copy `.env.example` to `.env` and update the `API_URL` value to point to your backend service. The value will be used when creating the Axios instance.
 
+For native OCR flag、權限與本機執行說明，請參考 [docs/ocr.md](docs/ocr.md).
+
 ## Testing & Linting
 
 - Run `npm run lint` to check for lint issues
