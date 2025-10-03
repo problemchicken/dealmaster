@@ -2,7 +2,7 @@ import type {SttTelemetryEvent, SttTelemetryPayload} from '../types/telemetry';
 
 declare const __DEV__: boolean;
 
-export type TelemetryPayload = Record<string, unknown> | undefined;
+export type TelemetryPayload = object | undefined;
 
 export const track = (event: string, payload?: TelemetryPayload): void => {
   try {
