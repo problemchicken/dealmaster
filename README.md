@@ -82,6 +82,70 @@ subscription();
 
 - Call `requestPermission()` before recording so the module can prompt users at runtime. When a user permanently denies access the module emits the `stt_permission_denied` telemetry event and resolves with a `blocked` status.
 
+### iOS-specific setup
+
+- Expo apps automatically merge the `ios.infoPlist` entries declared in [`app.json`](app.json); ensure the microphone and speech recognition usage descriptions are present before submitting to the App Store.
+- No extra React Native registration is required — the Swift bridge is exported through `SpeechModuleBridge.m` and is available as `NativeModules.SpeechModule`.
+- For local development run `npx pod-install` after installing JavaScript dependencies so the native module is compiled into the iOS project.
+
+### Testing notes
+
+- **Permissions** – Use `requestPermission()` to trigger the native prompt. On the iOS Simulator you can script responses with:
+
+  ```bash
+  xcrun simctl privacy booted speech-recognition grant com.dealmaster
+  xcrun simctl privacy booted speech-recognition deny com.dealmaster
+  xcrun simctl privacy booted microphone grant com.dealmaster
+  xcrun simctl privacy booted microphone deny com.dealmaster
+  ```
+
+- **Microphone input** – Feed canned audio to the simulator microphone while testing partial/final events:
+
+  ```bash
+  xcrun simctl io booted microphone ./fixtures/sample-command.wav
+  ```
+
+  End the stream with `Ctrl+C` once you observe `stt_final` firing.
+
+- **Telemetry expectations** – Example payloads emitted via `trackSttEvent`:
+
+  ```ts
+  // stt_partial
+  {
+    platform: 'ios',
+    provider: 'native',
+    sequence_id: 1,
+    text_length: 12,
+    partial_transcript: 'turn on lights',
+  }
+
+  // stt_final
+  {
+    platform: 'ios',
+    provider: 'native',
+    duration_ms: 3250,
+    text_length: 12,
+    transcript: 'turn on lights',
+  }
+
+  // stt_error
+  {
+    platform: 'ios',
+    provider: 'native',
+    error_code: 'no_speech_detected',
+    message: 'SFSpeechErrorCode.noSpeech',
+    native_flag: true,
+  }
+
+  // stt_permission_denied
+  {
+    platform: 'ios',
+    provider: 'native',
+    error_code: 'permission_denied',
+    native_flag: true,
+  }
+  ```
+
 ## Environment Variables
 
 Copy `.env.example` to `.env` and update the `API_URL` value to point to your backend service. The value will be used when creating the Axios instance.
