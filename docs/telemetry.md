@@ -1,61 +1,456 @@
-# OCR Telemetry
+# STT & OCR Telemetry Schema
 
-本文件列出 OCR 功能相關的遙測事件與屬性，作為產品分析與實作時的參考。
+本文件統整語音辨識（STT）與文字抽取（OCR）遙測事件，說明共用欄位、事件專屬欄位與錯誤碼對照，並提供每個事件的範例 Payload。
 
-## 事件對照
+> 範例資料同步維護於 [`docs/examples/telemetryExamples.ts`](./examples/telemetryExamples.ts)，並透過型別檢查確保正確性。
 
-| 事件名稱 (`eventName`) | 說明 |
+## 共用欄位
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `platform` | `'ios' \| 'android'` | 觸發事件的平台。 |
+| `provider` | `string` | 觸發事件的辨識/抽取供應來源（例如 `native`、`whisper`、`visionKit`、`mlkit`、`stub` 等）。 |
+
+> 其他欄位皆為事件專屬，請依下列定義傳入。
+
+## STT 事件
+
+| 事件名稱 | 說明 |
 | --- | --- |
-| `ocr_open` | 使用者開啟 OCR 選單或流程。|
-| `ocr_extract_ok` | 抽取成功且 `text_length > 0`。|
-| `ocr_extract_empty` | 抽取結果為空 (`text_length = 0`)。|
-| `ocr_quota_blocked` | 月度用量達上限，使用者被擋下。|
-| `ocr_native_fallback` | 原生管道失敗後，回退至 stub 實作。|
+| `stt_open` | 開啟語音輸入介面。 |
+| `stt_partial` | 去抖動後的中繼辨識結果（僅保留最新片段）。 |
+| `stt_final` | 辨識完成並提供完整文字。 |
+| `stt_error` | 辨識流程中發生錯誤。 |
+| `stt_permission_denied` | 使用者拒絕麥克風權限。 |
+| `stt_send` | 使用者確認並送出辨識結果。 |
 
-## 推薦屬性
+### `stt_open`
 
-除非另有註記，以下屬性為事件上報時推薦攜帶的欄位：
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `locale?` | `string \| null` | 預設語系。 |
+| `native_flag?` | `boolean` | 是否使用原生 STT 管道。 |
 
-| Key | 型別 | 範例 | 說明 |
-| --- | --- | --- | --- |
-| `platform` | `string` | `"ios"`, `"android"` | 觸發事件的平台。|
-| `native_flag` | `boolean` | `true`, `false` | 當下是否嘗試透過原生流程。|
-| `provider` | `string` | `"visionkit"`, `"mlkit"`, `"stub"` | 使用的 OCR 提供者。|
-| `text_length` | `number` | `0`, `42` | 抽取文字長度，僅適用於 `ocr_extract_*` 事件。|
-| `duration_ms` | `number` | `180` | OCR 耗時（毫秒），若可計算請提供。|
-| `error_code` | `string?` | `"timeout"` | 錯誤或回退時的錯誤代碼，適用於 `ocr_extract_empty`, `ocr_quota_blocked`, `ocr_native_fallback`。|
-
-## 使用建議
-
-- `ocr_extract_ok` 與 `ocr_extract_empty` 應搭配 `text_length` 與 `duration_ms`，以利分析成功率與效率。
-- `ocr_quota_blocked` 應標記 `error_code` 以區分是配額耗盡或其他錯誤。
-- `ocr_native_fallback` 建議攜帶觸發回退的 `error_code`，並保留 `provider` 以判斷原生模組類型。
-- 若後續新增額外屬性，建議保持命名一致並補充於此文件。
-
-## 上報範例
+**範例 Payload**
 
 ```ts
-import {track} from '../lib/telemetry';
-
-track('ocr_open', {
-  platform: 'ios',
-  native_flag: true,
-  provider: 'visionkit',
-});
-
-track('ocr_extract_ok', {
-  platform: 'ios',
-  native_flag: true,
-  provider: 'visionkit',
-  text_length: 42,
-  duration_ms: 180,
-});
-
-track('ocr_native_fallback', {
-  platform: 'android',
-  native_flag: true,
-  provider: 'mlkit',
-  duration_ms: 240,
-  error_code: 'native_timeout',
-});
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    locale: 'en-US',
+    native_flag: true,
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    locale: 'zh-TW',
+    native_flag: true,
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    locale: 'ja-JP',
+  },
+]
 ```
+
+### `stt_partial`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `sequence_id` | `number` | 本次會話內的遞增序號，用於比對延遲片段。 |
+| `text_length` | `number` | 目前片段的字元長度。 |
+| `partial_transcript` | `string` | 最新一次的部分辨識結果。 |
+
+> **去抖動原則：** 僅在片段內容有變化時上報，避免大量重複事件；完整文字請於 `stt_final` 上報。
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    sequence_id: 1,
+    text_length: 6,
+    partial_transcript: 'hello',
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    sequence_id: 2,
+    text_length: 14,
+    partial_transcript: '需要更多資料',
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    sequence_id: 3,
+    text_length: 9,
+    partial_transcript: '注文は',
+  },
+]
+```
+
+### `stt_final`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `duration_ms?` | `number` | 自開啟錄音至產出最終結果的耗時（毫秒）。 |
+| `text_length` | `number` | 完整辨識文字長度。 |
+| `transcript` | `string` | 最終辨識文字。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    duration_ms: 1850,
+    text_length: 24,
+    transcript: 'Hello, I would like to order coffee.',
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    duration_ms: 2200,
+    text_length: 12,
+    transcript: '需要更多資料',
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    duration_ms: 3100,
+    text_length: 18,
+    transcript: '注文はコーヒーです',
+  },
+]
+```
+
+### `stt_error`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `error_code` | `NormalizedErrorCode` | 對齊後的錯誤碼。 |
+| `message?` | `string` | 平台回傳的原始錯誤資訊。 |
+| `native_flag?` | `boolean` | 是否為原生管道錯誤。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    error_code: 'network_failure',
+    message: 'SFSpeechRecognizerErrorCode.network',
+    native_flag: true,
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    error_code: 'timeout',
+    message: 'RecognizerTimeoutError',
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    error_code: 'no_speech_detected',
+  },
+]
+```
+
+### `stt_permission_denied`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `error_code` | `'permission_denied'` | 固定值，利於查詢。 |
+| `native_flag?` | `boolean` | 是否來自原生權限流程。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    error_code: 'permission_denied',
+    native_flag: true,
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    error_code: 'permission_denied',
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    error_code: 'permission_denied',
+  },
+]
+```
+
+### `stt_send`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `duration_ms?` | `number` | 從錄音開始到送出指令的時間。 |
+| `text_length` | `number` | 送出文字的長度。 |
+| `transcript?` | `string` | 送出時的文字內容（若與 `stt_final` 不同可用於偵測編輯）。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'native',
+    duration_ms: 2100,
+    text_length: 24,
+    transcript: 'Hello, I would like to order coffee.',
+  },
+  {
+    platform: 'android',
+    provider: 'native',
+    duration_ms: 2350,
+    text_length: 12,
+    transcript: '需要更多資料',
+  },
+  {
+    platform: 'ios',
+    provider: 'whisper',
+    duration_ms: 3200,
+    text_length: 18,
+    transcript: '注文はコーヒーです',
+  },
+]
+```
+
+## OCR 事件
+
+| 事件名稱 | 說明 |
+| --- | --- |
+| `ocr_open` | 開啟 OCR 流程。 |
+| `ocr_extract_ok` | 抽取成功且文字長度大於 0。 |
+| `ocr_extract_empty` | 抽取完成但無文字。 |
+| `ocr_quota_blocked` | 月度配額已滿而被拒。 |
+| `ocr_native_fallback` | 原生抽取失敗後回退至備援方案。 |
+
+### `ocr_open`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `native_flag` | `boolean` | 是否使用原生模組。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'visionKit',
+    native_flag: true,
+  },
+  {
+    platform: 'android',
+    provider: 'mlkit',
+    native_flag: true,
+  },
+  {
+    platform: 'ios',
+    provider: 'stub',
+    native_flag: false,
+  },
+]
+```
+
+### `ocr_extract_ok`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `native_flag` | `boolean` | 是否使用原生模組。 |
+| `duration_ms?` | `number` | 抽取耗時。 |
+| `text_length` | `number` | 抽取文字長度。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'visionKit',
+    native_flag: true,
+    duration_ms: 180,
+    text_length: 54,
+  },
+  {
+    platform: 'android',
+    provider: 'mlkit',
+    native_flag: true,
+    duration_ms: 240,
+    text_length: 36,
+  },
+  {
+    platform: 'ios',
+    provider: 'stub',
+    native_flag: false,
+    duration_ms: 420,
+    text_length: 28,
+  },
+]
+```
+
+### `ocr_extract_empty`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `native_flag` | `boolean` | 是否使用原生模組。 |
+| `duration_ms?` | `number` | 抽取耗時。 |
+| `text_length` | `number` | 抽取文字長度（通常為 0）。 |
+| `error_code?` | `NormalizedErrorCode` | 對齊後的錯誤碼。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'visionKit',
+    native_flag: true,
+    duration_ms: 160,
+    text_length: 0,
+    error_code: 'no_text_detected',
+  },
+  {
+    platform: 'android',
+    provider: 'mlkit',
+    native_flag: true,
+    duration_ms: 210,
+    text_length: 0,
+    error_code: 'no_text_detected',
+  },
+  {
+    platform: 'ios',
+    provider: 'stub',
+    native_flag: false,
+    duration_ms: 400,
+    text_length: 0,
+    error_code: 'native_module_unavailable',
+  },
+]
+```
+
+### `ocr_quota_blocked`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `native_flag?` | `boolean` | 若可得知觸發前是否使用原生模組則填寫。 |
+| `error_code` | `'quota_exhausted'` | 固定值。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'visionKit',
+    native_flag: true,
+    error_code: 'quota_exhausted',
+  },
+  {
+    platform: 'android',
+    provider: 'mlkit',
+    error_code: 'quota_exhausted',
+  },
+  {
+    platform: 'ios',
+    provider: 'stub',
+    native_flag: false,
+    error_code: 'quota_exhausted',
+  },
+]
+```
+
+### `ocr_native_fallback`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `native_flag` | `boolean` | 是否原生模組先行嘗試。 |
+| `duration_ms?` | `number` | 回退前的耗時。 |
+| `error_code` | `'timeout' \| 'native_module_unavailable' \| 'transient_native_failure'` | 對齊後的錯誤碼。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'visionKit',
+    native_flag: true,
+    duration_ms: 300,
+    error_code: 'timeout',
+  },
+  {
+    platform: 'android',
+    provider: 'mlkit',
+    native_flag: true,
+    duration_ms: 360,
+    error_code: 'transient_native_failure',
+  },
+  {
+    platform: 'ios',
+    provider: 'stub',
+    native_flag: false,
+    duration_ms: 500,
+    error_code: 'native_module_unavailable',
+  },
+]
+```
+
+## 錯誤碼對照
+
+以下表格協助將平台錯誤碼對齊至 `NormalizedErrorCode`：
+
+### STT（iOS）
+
+| 平台錯誤碼 | Normalized | 備註 |
+| --- | --- | --- |
+| `SFSpeechRecognizerErrorCode.notAuthorized` | `permission_denied` | 使用者尚未授權或於設定中關閉。 |
+| `SFSpeechRecognizerErrorCode.network` | `network_failure` | 網路連線失敗。 |
+| `SFSpeechRecognizerErrorCode.noSpeech` | `no_speech_detected` | 未偵測到語音。 |
+| `SFSpeechRecognizerErrorCode.canceled` | `timeout` | 錄音或辨識逾時。 |
+
+### STT（Android）
+
+| 平台錯誤碼 | Normalized | 備註 |
+| --- | --- | --- |
+| `ERROR_INSUFFICIENT_PERMISSIONS` | `permission_denied` | 使用者拒絕麥克風權限。 |
+| `ERROR_NETWORK` / `ERROR_NETWORK_TIMEOUT` | `network_failure` | 網路相關錯誤。 |
+| `ERROR_NO_MATCH` | `no_speech_detected` | 無符合結果。 |
+| `ERROR_SPEECH_TIMEOUT` | `timeout` | 語音輸入逾時。 |
+
+### OCR（iOS）
+
+| 平台錯誤碼 | Normalized | 備註 |
+| --- | --- | --- |
+| `VNErrorDomain.codeTimeout` | `timeout` | VisionKit 辨識逾時。 |
+| `VisionKitError.nativeUnavailable` | `native_module_unavailable` | 原生模組不可用。 |
+| `VisionKitError.noText` | `no_text_detected` | 無文字內容。 |
+
+### OCR（Android）
+
+| 平台錯誤碼 | Normalized | 備註 |
+| --- | --- | --- |
+| `MLKitError.Code.UNAVAILABLE` | `native_module_unavailable` | 原生模組尚未初始化或已卸載。 |
+| `MLKitError.Code.DEADLINE_EXCEEDED` | `timeout` | 模型推論逾時。 |
+| `TextRecognizerResultCode.EMPTY` | `no_text_detected` | 無抽取文字。 |
+| `QuotaExceededException` | `quota_exhausted` | 達到月度配額限制。 |
+
+## 實作建議
+
+- 優先完成 `stt_final` 後再觸發 `stt_send`，確保送出的文字與最後一次結果一致。
+- `stt_partial` 僅保留最新的片段，減少噪音；若需完整歷史，請在客端自行儲存。
+- 每次回退 (`ocr_native_fallback`) 須附上 `error_code` 以利追蹤原生模組健康度。
+- 若後續新增欄位或錯誤碼，請同步更新本文件與範例程式並補齊型別檢查。
