@@ -3,7 +3,11 @@ declare const __DEV__: boolean;
 import {NativeEventEmitter, NativeModules, Platform} from 'react-native';
 import type {NativeModule} from 'react-native';
 import {trackSttEvent} from './telemetry';
-import type {SttTelemetryPayload} from '../types/telemetry';
+import type {
+  BaseTelemetryProps,
+  NormalizedErrorCode,
+  SttTelemetryPayloadFor,
+} from '../types/telemetry';
 
 export type SpeechPermissionStatus =
   | 'granted'
@@ -60,9 +64,52 @@ const listeners: {
   stt_permission_denied: new Set(),
 };
 
-const basePayload = (): SttTelemetryPayload => ({
-  platform: Platform.OS,
+const STT_PROVIDER: BaseTelemetryProps['provider'] = 'native';
+
+const getTelemetryPlatform = (): BaseTelemetryProps['platform'] =>
+  Platform.OS === 'android' ? 'android' : 'ios';
+
+const basePayload = (): BaseTelemetryProps => ({
+  platform: getTelemetryPlatform(),
+  provider: STT_PROVIDER,
 });
+
+const resolveTextLength = ({text, chars}: TranscriptionEvent): number => {
+  if (typeof chars === 'number' && Number.isFinite(chars)) {
+    return chars;
+  }
+  return text.length;
+};
+
+const normalizedErrorCodes = new Set<NormalizedErrorCode>([
+  'permission_denied',
+  'timeout',
+  'network_failure',
+  'quota_exhausted',
+  'native_module_unavailable',
+  'no_speech_detected',
+  'no_text_detected',
+  'transient_native_failure',
+]);
+
+const normalizeErrorCode = (
+  code?: string,
+): NormalizedErrorCode => {
+  if (code && normalizedErrorCodes.has(code as NormalizedErrorCode)) {
+    return code as NormalizedErrorCode;
+  }
+
+  switch (code) {
+    case 'module_unavailable':
+      return 'native_module_unavailable';
+    case 'permission_request_failed':
+      return 'transient_native_failure';
+    default:
+      return 'transient_native_failure';
+  }
+};
+
+let partialSequenceId = 0;
 
 const toMilliseconds = (durationInSeconds?: number): number | undefined => {
   if (typeof durationInSeconds !== 'number') {
@@ -75,30 +122,58 @@ const emitTelemetry = <E extends SpeechEventName>(
   event: E,
   payload: SpeechEventPayloadMap[E],
 ): void => {
-  const telemetry: SttTelemetryPayload = basePayload();
-
-  if (event === 'stt_partial' || event === 'stt_final') {
-    const data = payload as TranscriptionEvent;
-    const durationMs = toMilliseconds(data.duration);
-    if (typeof data.chars === 'number') {
-      telemetry.chars = data.chars;
+  switch (event) {
+    case 'stt_partial': {
+      partialSequenceId += 1;
+      const data = payload as TranscriptionEvent;
+      const telemetry: SttTelemetryPayloadFor<'stt_partial'> = {
+        ...basePayload(),
+        sequence_id: partialSequenceId,
+        text_length: resolveTextLength(data),
+        partial_transcript: data.text,
+      };
+      trackSttEvent('stt_partial', telemetry);
+      return;
     }
-    if (typeof durationMs === 'number') {
-      telemetry.duration_ms = durationMs;
+    case 'stt_final': {
+      const data = payload as TranscriptionEvent;
+      const telemetry: SttTelemetryPayloadFor<'stt_final'> = {
+        ...basePayload(),
+        text_length: resolveTextLength(data),
+        transcript: data.text,
+      };
+      const durationMs = toMilliseconds(data.duration);
+      if (typeof durationMs === 'number') {
+        telemetry.duration_ms = durationMs;
+      }
+      trackSttEvent('stt_final', telemetry);
+      return;
     }
+    case 'stt_error': {
+      const errorPayload = payload as ErrorEvent;
+      const telemetry: SttTelemetryPayloadFor<'stt_error'> = {
+        ...basePayload(),
+        error_code: normalizeErrorCode(errorPayload.error_code),
+        native_flag: true,
+      };
+      if (typeof errorPayload.message === 'string') {
+        telemetry.message = errorPayload.message;
+      }
+      trackSttEvent('stt_error', telemetry);
+      return;
+    }
+    case 'stt_permission_denied': {
+      const telemetry: SttTelemetryPayloadFor<'stt_permission_denied'> = {
+        ...basePayload(),
+        error_code: 'permission_denied',
+        native_flag: true,
+      };
+      trackSttEvent('stt_permission_denied', telemetry);
+      return;
+    }
+    default:
+      trackSttEvent(event, basePayload() as SttTelemetryPayloadFor<E>);
   }
-
-  if (event === 'stt_error') {
-    const errorPayload = payload as ErrorEvent;
-    if (typeof errorPayload.error_code === 'string') {
-      telemetry.error_code = errorPayload.error_code;
-    }
-    if (typeof errorPayload.message === 'string') {
-      telemetry.message = errorPayload.message;
-    }
-  }
-
-  trackSttEvent(event, telemetry);
 };
 
 const notifyListeners = <E extends SpeechEventName>(
@@ -147,7 +222,8 @@ const ensureNativeModule = (): SpeechNativeModule => {
     trackSttEvent('stt_error', {
       ...basePayload(),
       message: 'Speech native module is unavailable.',
-      error_code: 'module_unavailable',
+      error_code: 'native_module_unavailable',
+      native_flag: false,
     });
     throw new Error('Speech native module is unavailable.');
   }
@@ -174,7 +250,11 @@ export const removeAllSpeechListeners = (): void => {
 export const isSpeechModuleAvailable = (): boolean => nativeModule != null;
 
 export const open = async (): Promise<boolean> => {
-  trackSttEvent('stt_open', basePayload());
+  partialSequenceId = 0;
+  trackSttEvent('stt_open', {
+    ...basePayload(),
+    native_flag: isSpeechModuleAvailable(),
+  });
   const module = ensureNativeModule();
   return module.startTranscribing();
 };
@@ -194,8 +274,11 @@ export const send = async (text: string): Promise<void> => {
   if (!trimmed) {
     return;
   }
-  const payload: SttTelemetryPayload = basePayload();
-  payload.chars = trimmed.length;
+  const payload: SttTelemetryPayloadFor<'stt_send'> = {
+    ...basePayload(),
+    text_length: trimmed.length,
+    transcript: trimmed,
+  };
   trackSttEvent('stt_send', payload);
 };
 
@@ -224,7 +307,8 @@ export const requestPermission = async (): Promise<SpeechPermissionStatus> => {
     trackSttEvent('stt_error', {
       ...basePayload(),
       message: error instanceof Error ? error.message : String(error),
-      error_code: 'permission_request_failed',
+      error_code: 'transient_native_failure',
+      native_flag: true,
     });
     return 'unavailable';
   }
