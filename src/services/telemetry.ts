@@ -1,4 +1,4 @@
-import type {SttTelemetryEvent, SttTelemetryPayload} from '../types/telemetry';
+import type {SttTelemetryEvent, SttTelemetryPayloadFor} from '../types/telemetry';
 
 declare const __DEV__: boolean;
 
@@ -16,9 +16,9 @@ export const track = (event: string, payload?: TelemetryPayload): void => {
   }
 };
 
-export const trackSttEvent = (
-  event: SttTelemetryEvent,
-  payload: SttTelemetryPayload,
+export const trackSttEvent = <E extends SttTelemetryEvent>(
+  event: E,
+  payload: SttTelemetryPayloadFor<E>,
 ): void => {
   track(event, payload);
 };
