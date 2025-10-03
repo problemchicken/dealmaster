@@ -17,6 +17,7 @@ jobs:
         with:
           node-version: 20
           cache: 'npm'
+          cache-dependency-path: package-lock.json
 
       - name: Install dependencies
         run: npm ci
@@ -26,5 +27,5 @@ jobs:
 
       - name: Lint
         env:
-          ESLINT_USE_FLAT_CONFIG: false
-        run: npm run lint -- --max-warnings=0
+          ESLINT_USE_FLAT_CONFIG: '0'
+        run: npm run lint -- --max-warnings=0 --config .eslintrc.js
