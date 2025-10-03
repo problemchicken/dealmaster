@@ -1,3 +1,5 @@
+import type {SttTelemetryEvent, SttTelemetryPayload} from '../types/telemetry';
+
 declare const __DEV__: boolean;
 
 export type TelemetryPayload = Record<string, unknown> | undefined;
@@ -12,4 +14,11 @@ export const track = (event: string, payload?: TelemetryPayload): void => {
       console.warn('Failed to emit telemetry event', error);
     }
   }
+};
+
+export const trackSttEvent = (
+  event: SttTelemetryEvent,
+  payload: SttTelemetryPayload,
+): void => {
+  track(event, payload);
 };

@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.dealmaster">
+
+    <!-- Android speech-to-text requires microphone access. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+
+    <!-- The remaining manifest content is provided by the host React Native app. -->
+    <application tools:node="merge" />
+</manifest>
