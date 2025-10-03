@@ -2,6 +2,12 @@
   "name": "dealmaster",
   "displayName": "DealMaster",
   "expo": {
-    "plugins": ["expo-image-picker"]
+    "plugins": ["expo-image-picker"],
+    "ios": {
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow DealMaster to capture voice input for speech-to-text commands.",
+        "NSSpeechRecognitionUsageDescription": "Allow DealMaster to transcribe your speech to text inside the assistant."
+      }
+    }
   }
 }

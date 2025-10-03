@@ -14,6 +14,7 @@ class SpeechModule: RCTEventEmitter {
   private var reject: RCTPromiseRejectBlock?
   private var sessionStartDate: Date?
   private var isUserInitiatedStop = false
+  private var isUserInitiatedCancel = false
   private var isFinishing = false
 
   override static func requiresMainQueueSetup() -> Bool {
@@ -44,6 +45,8 @@ class SpeechModule: RCTEventEmitter {
     lastTranscription = nil
     sessionStartDate = nil
     isUserInitiatedStop = false
+    isUserInitiatedCancel = false
+    isFinishing = false
   }
 
   private func emitTelemetry(event: String, payload: [String: Any]) {
@@ -77,8 +80,52 @@ class SpeechModule: RCTEventEmitter {
     emitPartialTranscription(transcription, isFinal: true)
   }
 
-  private func emitError(_ error: Error) {
-    emitTelemetry(event: "stt_error", payload: ["message": error.localizedDescription])
+  private func emitError(message: String?, errorCode: String) {
+    var payload: [String: Any] = [
+      "error_code": errorCode
+    ]
+
+    if let message, !message.isEmpty {
+      payload["message"] = message
+    }
+
+    emitTelemetry(event: "stt_error", payload: payload)
+  }
+
+  private func normalizedErrorCode(for error: NSError) -> String {
+    if error.domain == NSURLErrorDomain {
+      return "network_failure"
+    }
+
+    if error.domain == SFSpeechRecognitionErrorDomain,
+       let speechError = SFSpeechErrorCode(rawValue: error.code) {
+      switch speechError {
+      case .notAuthorized:
+        return "permission_denied"
+      case .noSpeech:
+        return "no_speech_detected"
+      case .notAvailable, .unsupportedLocale:
+        return "native_module_unavailable"
+      default:
+        return "transient_native_failure"
+      }
+    }
+
+    return "transient_native_failure"
+  }
+
+  private func emitError(_ error: NSError) {
+    let code = normalizedErrorCode(for: error)
+    emitError(message: error.localizedDescription, errorCode: code)
+  }
+
+  private func emitSetupError(message: String, code: String) {
+    emitError(message: message, errorCode: code)
+  }
+
+  private func isRecognizerAvailable() -> Bool {
+    guard let recognizer = speechRecognizer else { return false }
+    return recognizer.isAvailable
   }
 
   private func permissionStatus(
@@ -96,6 +143,9 @@ class SpeechModule: RCTEventEmitter {
   }
 
   private func currentPermissionStatus() -> String {
+    guard isRecognizerAvailable() else {
+      return "unavailable"
+    }
     let speechStatus = SFSpeechRecognizer.authorizationStatus()
     let micStatus = AVAudioSession.sharedInstance().recordPermission
     return permissionStatus(speech: speechStatus, micPermission: micStatus)
@@ -105,44 +155,66 @@ class SpeechModule: RCTEventEmitter {
   func startTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
                          rejecter reject: @escaping RCTPromiseRejectBlock) {
     isUserInitiatedStop = false
+    isUserInitiatedCancel = false
     isFinishing = false
     lastTranscription = nil
-    sessionStartDate = Date()
+
+    guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+      emitSetupError(message: "Speech recognizer is unavailable", code: "native_module_unavailable")
+      DispatchQueue.main.async {
+        reject("stt_error", "Speech recognizer is unavailable", nil)
+        self.resetSession()
+      }
+      return
+    }
 
     SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
       guard let self else { return }
 
       if authStatus != .authorized {
-        self.emitPermissionDenied()
-        reject("stt_error", "Speech recognition permission denied", nil)
+        DispatchQueue.main.async {
+          self.emitPermissionDenied()
+          reject("stt_error", "Speech recognition permission denied", nil)
+          self.resetSession()
+        }
         return
       }
 
       AVAudioSession.sharedInstance().requestRecordPermission { granted in
-        guard granted else {
-          self.emitPermissionDenied()
-          reject("stt_error", "Microphone permission denied", nil)
-          return
-        }
-
         DispatchQueue.main.async {
-          self.startRecording()
-          resolve(true)
+          guard granted else {
+            self.emitPermissionDenied()
+            reject("stt_error", "Microphone permission denied", nil)
+            self.resetSession()
+            return
+          }
+          do {
+            self.sessionStartDate = Date()
+            try self.startRecording(with: recognizer)
+            resolve(true)
+          } catch {
+            let nsError = error as NSError
+            self.emitError(nsError)
+            reject("stt_error", error.localizedDescription, nsError)
+            self.resetSession()
+          }
         }
       }
     }
   }
 
-  private func startRecording() {
+  private func startRecording(with recognizer: SFSpeechRecognizer) throws {
     let audioSession = AVAudioSession.sharedInstance()
-    try? audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-    try? audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+    try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
     recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
-    guard let recognitionRequest else { return }
+    guard let recognitionRequest else {
+      throw NSError(domain: "SpeechModule", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to create recognition request"])
+    }
     recognitionRequest.shouldReportPartialResults = true
 
-    recognitionTask = speechRecognizer?.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+    recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
       guard let self else { return }
 
       if let result {
@@ -167,13 +239,18 @@ class SpeechModule: RCTEventEmitter {
     }
 
     audioEngine.prepare()
-    try? audioEngine.start()
+    try audioEngine.start()
   }
 
   @objc
   func stopTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
                         rejecter reject: @escaping RCTPromiseRejectBlock) {
+    guard recognitionTask != nil else {
+      resolve(lastTranscription ?? "")
+      return
+    }
     isUserInitiatedStop = true
+    isUserInitiatedCancel = false
     self.resolve = resolve
     self.reject = reject
     recognitionRequest?.endAudio()
@@ -186,7 +263,8 @@ class SpeechModule: RCTEventEmitter {
       resolve("")
       return
     }
-    isUserInitiatedStop = true
+    isUserInitiatedStop = false
+    isUserInitiatedCancel = true
     self.resolve = resolve
     self.reject = reject
     recognitionTask?.cancel()
@@ -201,6 +279,10 @@ class SpeechModule: RCTEventEmitter {
   @objc
   func requestPermission(_ resolve: @escaping RCTPromiseResolveBlock,
                          rejecter _: @escaping RCTPromiseRejectBlock) {
+    guard isRecognizerAvailable() else {
+      resolve("unavailable")
+      return
+    }
     SFSpeechRecognizer.requestAuthorization { [weak self] speechStatus in
       guard let self else { return }
 
@@ -224,11 +306,19 @@ class SpeechModule: RCTEventEmitter {
 
     if let error = error as NSError? {
       let canceledCode = SFSpeechErrorCode.canceled.rawValue
-      if error.domain == SFSpeechRecognitionErrorDomain && error.code == canceledCode && isUserInitiatedStop {
-        resolve?(finalText)
-        emitSttFinalIfNeeded(finalText)
-        resetSession()
-        return
+      if error.domain == SFSpeechRecognitionErrorDomain && error.code == canceledCode {
+        if isUserInitiatedCancel {
+          resolve?("")
+          resetSession()
+          return
+        }
+
+        if isUserInitiatedStop {
+          resolve?(finalText)
+          emitSttFinalIfNeeded(finalText)
+          resetSession()
+          return
+        }
       }
 
       reject?("stt_error", error.localizedDescription, error)
