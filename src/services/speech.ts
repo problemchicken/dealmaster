@@ -23,7 +23,7 @@ type TranscriptionEvent = {
 
 type ErrorEvent = {
   message?: string;
-  error_code?: string;
+  error_code?: string | number | null;
 };
 
 export type SpeechEventPayloadMap = {
@@ -98,13 +98,14 @@ const NORMALIZED_ERROR_CODE_MAP: Record<string, NormalizedErrorCode> = {
   '9': 'permission_denied',
 };
 
-const normalizeErrorCode = (code?: string): NormalizedErrorCode => {
-  if (!code) {
+const normalizeErrorCode = (code: unknown): NormalizedErrorCode => {
+  if (code == null) {
     return 'transient_native_failure';
   }
 
-  if (code in NORMALIZED_ERROR_CODE_MAP) {
-    return NORMALIZED_ERROR_CODE_MAP[code];
+  const normalized = NORMALIZED_ERROR_CODE_MAP[String(code)];
+  if (normalized) {
+    return normalized;
   }
 
   return 'transient_native_failure';
