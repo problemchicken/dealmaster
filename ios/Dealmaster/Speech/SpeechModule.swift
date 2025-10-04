@@ -6,7 +6,8 @@ import React
 @objc(SpeechModule)
 class SpeechModule: RCTEventEmitter {
   private let audioEngine = AVAudioEngine()
-  private var speechRecognizer = SFSpeechRecognizer()
+  private var speechRecognizer: SFSpeechRecognizer? =
+    SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
   private var recognitionTask: SFSpeechRecognitionTask?
   private var lastTranscription: String?
@@ -16,6 +17,10 @@ class SpeechModule: RCTEventEmitter {
   private var isUserInitiatedStop = false
   private var isUserInitiatedCancel = false
   private var isFinishing = false
+
+  deinit {
+    resetSession()
+  }
 
   override static func requiresMainQueueSetup() -> Bool {
     return true
@@ -31,6 +36,7 @@ class SpeechModule: RCTEventEmitter {
   }
 
   private func resetSession() {
+    recognitionTask?.cancel()
     recognitionTask = nil
     recognitionRequest?.endAudio()
     recognitionRequest = nil
@@ -38,6 +44,7 @@ class SpeechModule: RCTEventEmitter {
     if audioEngine.isRunning {
       audioEngine.stop()
       audioEngine.inputNode.removeTap(onBus: 0)
+      audioEngine.reset()
     }
 
     resolve = nil
@@ -104,6 +111,8 @@ class SpeechModule: RCTEventEmitter {
         return "permission_denied"
       case .noSpeech:
         return "no_speech_detected"
+      case .canceled:
+        return "timeout"
       case .notAvailable, .unsupportedLocale:
         return "native_module_unavailable"
       default:
@@ -158,6 +167,10 @@ class SpeechModule: RCTEventEmitter {
     isUserInitiatedCancel = false
     isFinishing = false
     lastTranscription = nil
+
+    if speechRecognizer == nil {
+      speechRecognizer = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
+    }
 
     guard let recognizer = speechRecognizer, recognizer.isAvailable else {
       emitSetupError(message: "Speech recognizer is unavailable", code: "native_module_unavailable")
