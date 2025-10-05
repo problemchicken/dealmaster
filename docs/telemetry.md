@@ -448,6 +448,46 @@
 | `TextRecognizerResultCode.EMPTY` | `no_text_detected` | 無抽取文字。 |
 | `QuotaExceededException` | `quota_exhausted` | 達到月度配額限制。 |
 
+## 語音談判管線事件
+
+為了串接 iOS 語音辨識與後端談判模組，新增 `speech_pipeline_complete` 事件以衡量端到端反應時間與錯誤率。
+
+| 事件名稱 | 說明 |
+| --- | --- |
+| `speech_pipeline_complete` | 前端上傳語音後，後端完成轉文字、策略生成並回傳結果。 |
+
+### `speech_pipeline_complete`
+
+| Key | 型別 | 說明 |
+| --- | --- | --- |
+| `duration_ms` | `number` | 從送出語音請求到收到策略回應的總耗時。 |
+| `error_rate` | `0 \| 1` | 若請求失敗則為 `1`，成功為 `0`，便於後續統計錯誤率。 |
+| `transcript_length?` | `number` | 後端回傳文字長度。 |
+| `error_code?` | `NormalizedErrorCode` | 失敗時的標準化錯誤碼。 |
+| `error_message?` | `string` | 後端或網路層回傳的錯誤訊息。 |
+
+**範例 Payload**
+
+```ts
+[
+  {
+    platform: 'ios',
+    provider: 'speech_pipeline',
+    duration_ms: 1250,
+    error_rate: 0,
+    transcript_length: 42,
+  },
+  {
+    platform: 'ios',
+    provider: 'speech_pipeline',
+    duration_ms: 980,
+    error_rate: 1,
+    error_code: 'network_failure',
+    error_message: 'ECONNRESET',
+  },
+]
+```
+
 ## 實作建議
 
 - 優先完成 `stt_final` 後再觸發 `stt_send`，確保送出的文字與最後一次結果一致。

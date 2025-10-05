@@ -4,6 +4,7 @@ import type {
   OcrNativeFallbackTelemetryPayload,
   OcrOpenTelemetryPayload,
   OcrQuotaBlockedTelemetryPayload,
+  SpeechPipelineCompleteTelemetryPayload,
   SttErrorTelemetryPayload,
   SttFinalTelemetryPayload,
   SttOpenTelemetryPayload,
@@ -141,6 +142,24 @@ export const sttSendExamples: SttSendTelemetryPayload[] = [
     duration_ms: 3200,
     text_length: 18,
     transcript: '注文はコーヒーです',
+  },
+];
+
+export const speechPipelineCompleteExamples: SpeechPipelineCompleteTelemetryPayload[] = [
+  {
+    platform: 'ios',
+    provider: 'speech_pipeline',
+    duration_ms: 1250,
+    error_rate: 0,
+    transcript_length: 42,
+  },
+  {
+    platform: 'ios',
+    provider: 'speech_pipeline',
+    duration_ms: 980,
+    error_rate: 1,
+    error_code: 'network_failure',
+    error_message: 'ECONNRESET',
   },
 ];
 
