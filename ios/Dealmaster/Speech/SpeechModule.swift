@@ -18,6 +18,8 @@ class SpeechModule: RCTEventEmitter {
   private var isUserInitiatedStop = false
   private var isUserInitiatedCancel = false
   private var isFinishing = false
+  private let maxRetryCount = 3
+  private var retryCount = 0
 
   deinit {
     teardownSession()
@@ -36,7 +38,7 @@ class SpeechModule: RCTEventEmitter {
     ]
   }
 
-  private func teardownSession() {
+  private func cleanupRecognitionResources() {
     recognitionTask?.cancel()
     recognitionTask = nil
     recognitionRequest?.endAudio()
@@ -49,6 +51,10 @@ class SpeechModule: RCTEventEmitter {
     }
 
     try? audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
+  }
+
+  private func teardownSession(resetRetryCount: Bool = true) {
+    cleanupRecognitionResources()
 
     pendingResolve = nil
     pendingReject = nil
@@ -57,6 +63,10 @@ class SpeechModule: RCTEventEmitter {
     isUserInitiatedStop = false
     isUserInitiatedCancel = false
     isFinishing = false
+
+    if resetRetryCount {
+      retryCount = 0
+    }
   }
 
   private func emitTelemetry(event: String, payload: [String: Any]) {
@@ -93,7 +103,12 @@ class SpeechModule: RCTEventEmitter {
     emitPartialTranscription(transcription, isFinal: true)
   }
 
-  private func emitError(message: String?, errorCode: String) {
+  private func emitError(
+    message: String?,
+    errorCode: String,
+    retryCount: Int? = nil,
+    willRetry: Bool = false
+  ) {
     var payload: [String: Any] = [
       "error_code": errorCode,
     ]
@@ -101,6 +116,12 @@ class SpeechModule: RCTEventEmitter {
     if let message, !message.isEmpty {
       payload["message"] = message
     }
+
+    if let retryCount {
+      payload["retry_count"] = retryCount
+    }
+
+    payload["will_retry"] = willRetry
 
     emitTelemetry(event: "stt_error", payload: payload)
   }
@@ -145,9 +166,18 @@ class SpeechModule: RCTEventEmitter {
     return "transient_native_failure"
   }
 
-  private func emitError(_ error: NSError) {
+  private func emitError(
+    _ error: NSError,
+    retryCount: Int? = nil,
+    willRetry: Bool = false
+  ) {
     let code = normalizedErrorCode(for: error)
-    emitError(message: error.localizedDescription, errorCode: code)
+    emitError(
+      message: error.localizedDescription,
+      errorCode: code,
+      retryCount: retryCount,
+      willRetry: willRetry
+    )
   }
 
   private func emitSetupError(message: String, code: String) {
@@ -188,6 +218,23 @@ class SpeechModule: RCTEventEmitter {
     let speechStatus = SFSpeechRecognizer.authorizationStatus()
     let micStatus = audioSession.recordPermission
     return permissionStatus(speech: speechStatus, micPermission: micStatus)
+  }
+
+  private func shouldAttemptRetry(errorCode: String) -> Bool {
+    if retryCount >= maxRetryCount {
+      return false
+    }
+
+    if isUserInitiatedStop || isUserInitiatedCancel {
+      return false
+    }
+
+    let nonRetryableCodes: Set<String> = [
+      "permission_denied",
+      "native_module_unavailable",
+    ]
+
+    return !nonRetryableCodes.contains(errorCode)
   }
 
   private func prepareAudioSession() throws {
@@ -265,9 +312,51 @@ class SpeechModule: RCTEventEmitter {
       }
 
       let normalizedCode = normalizedErrorCode(for: error)
-      let formattedMessage = formatErrorMessage(error.localizedDescription, errorCode: normalizedCode)
+      let formattedMessage = formatErrorMessage(
+        error.localizedDescription,
+        errorCode: normalizedCode
+      )
+
+      if shouldAttemptRetry(errorCode: normalizedCode),
+         let recognizer = speechRecognizer,
+         recognizer.isAvailable {
+        retryCount += 1
+        emitError(
+          message: error.localizedDescription,
+          errorCode: normalizedCode,
+          retryCount: retryCount,
+          willRetry: true
+        )
+
+        cleanupRecognitionResources()
+        lastTranscription = nil
+        isFinishing = false
+
+        do {
+          try startRecording(with: recognizer)
+          sessionStartDate = Date()
+          return
+        } catch {
+          let restartError = error as NSError
+          emitError(restartError, retryCount: retryCount, willRetry: false)
+          let restartCode = normalizedErrorCode(for: restartError)
+          let restartMessage = formatErrorMessage(
+            restartError.localizedDescription,
+            errorCode: restartCode
+          )
+          pendingReject?("stt_error", restartMessage, restartError)
+          teardownSession()
+          return
+        }
+      }
+
+      emitError(
+        message: error.localizedDescription,
+        errorCode: normalizedCode,
+        retryCount: retryCount,
+        willRetry: false
+      )
       pendingReject?("stt_error", formattedMessage, error)
-      emitError(error)
       teardownSession()
       return
     }
@@ -288,6 +377,7 @@ class SpeechModule: RCTEventEmitter {
     lastTranscription = nil
     pendingResolve = nil
     pendingReject = nil
+    retryCount = 0
 
     if speechRecognizer == nil {
       speechRecognizer = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)

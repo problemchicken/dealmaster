@@ -47,6 +47,8 @@ export interface SttErrorTelemetryPayload extends BaseTelemetryProps {
   error_code: NormalizedErrorCode;
   message?: string;
   native_flag?: boolean;
+  retry_count?: number;
+  will_retry?: boolean;
 }
 
 export interface SttPermissionDeniedTelemetryPayload extends BaseTelemetryProps {
