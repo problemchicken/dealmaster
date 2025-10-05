@@ -23,6 +23,7 @@ import com.facebook.react.bridge.WritableMap
 import com.facebook.react.modules.core.DeviceEventManagerModule
 import com.facebook.react.modules.core.PermissionAwareActivity
 import com.facebook.react.modules.core.PermissionListener
+import org.json.JSONObject
 
 class SpeechModule(private val reactContext: ReactApplicationContext) :
   ReactContextBaseJavaModule(reactContext),
@@ -49,7 +50,10 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
 
   private fun ensureRecognizer(): Boolean {
     if (!SpeechRecognizer.isRecognitionAvailable(reactContext)) {
-      emitError("Speech recognition is not available on this device", "unavailable")
+      emitError(
+        message = "Speech recognition is not available on this device",
+        errorCode = ERROR_NATIVE_MODULE_UNAVAILABLE,
+      )
       return false
     }
 
@@ -109,7 +113,20 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
       return
     }
 
-    val message = when (error) {
+    val message = messageForError(error)
+    val normalizedCode = normalizeErrorCode(error)
+
+    if (normalizedCode == ERROR_PERMISSION_DENIED) {
+      emitPermissionDenied()
+    }
+
+    rejectStopPromise(message, normalizedCode)
+    emitError(message, errorCode = normalizedCode)
+    cleanupRecognizer()
+  }
+
+  private fun messageForError(error: Int): String {
+    return when (error) {
       SpeechRecognizer.ERROR_AUDIO -> "Audio recording error"
       SpeechRecognizer.ERROR_CLIENT -> "Client side error"
       SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> "Insufficient permissions"
@@ -121,14 +138,26 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
       SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> "Speech timeout"
       else -> "Unknown error"
     }
+  }
 
-    if (error == SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS) {
-      emitPermissionDenied()
+  private fun normalizeErrorCode(error: Int): String {
+    return when (error) {
+      SpeechRecognizer.ERROR_AUDIO,
+      SpeechRecognizer.ERROR_CLIENT,
+      SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+      SpeechRecognizer.ERROR_SERVER -> ERROR_TRANSIENT_NATIVE_FAILURE
+      SpeechRecognizer.ERROR_INSUFFICIENT_PERMISSIONS -> ERROR_PERMISSION_DENIED
+      SpeechRecognizer.ERROR_NETWORK,
+      SpeechRecognizer.ERROR_NETWORK_TIMEOUT -> ERROR_NETWORK_FAILURE
+      SpeechRecognizer.ERROR_NO_MATCH -> ERROR_NO_SPEECH_DETECTED
+      SpeechRecognizer.ERROR_SPEECH_TIMEOUT -> ERROR_TIMEOUT
+      else -> ERROR_TRANSIENT_NATIVE_FAILURE
     }
+  }
 
-    stopPromise?.reject(ERROR_CODE, message)
-    emitError(message, errorCode = error.toString())
-    cleanupRecognizer()
+  private fun rejectStopPromise(message: String?, errorCode: String) {
+    stopPromise?.reject(ERROR_CODE, formatErrorMessage(message, errorCode))
+    stopPromise = null
   }
 
   private fun emitTranscription(text: String, isFinal: Boolean) {
@@ -142,18 +171,19 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
     sendEvent(event, payload)
   }
 
-  private fun emitError(message: String, errorCode: String? = null) {
+  private fun emitError(message: String?, errorCode: String) {
     val payload = Arguments.createMap().apply {
-      putString("message", message)
-      if (errorCode != null) {
-        putString("error_code", errorCode)
-      }
+      putString("error_code", errorCode)
+      message?.let { putString("message", it) }
     }
     sendEvent(EVENT_ERROR, payload)
   }
 
   private fun emitPermissionDenied() {
-    sendEvent(EVENT_PERMISSION_DENIED, Arguments.createMap())
+    val payload = Arguments.createMap().apply {
+      putString("error_code", ERROR_PERMISSION_DENIED)
+    }
+    sendEvent(EVENT_PERMISSION_DENIED, payload)
   }
 
   private fun sendEvent(eventName: String, params: WritableMap) {
@@ -195,7 +225,10 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
       return true
     }
     emitPermissionDenied()
-    promise.reject(ERROR_CODE, "Microphone permission denied")
+    promise.reject(
+      ERROR_CODE,
+      formatErrorMessage("Microphone permission denied", ERROR_PERMISSION_DENIED),
+    )
     return false
   }
 
@@ -214,7 +247,10 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
   fun startTranscribing(promise: Promise) {
     val locale = currentLocale()
     if (!ensureRecognizer()) {
-      promise.reject(ERROR_CODE, "Speech recognizer unavailable")
+      promise.reject(
+        ERROR_CODE,
+        formatErrorMessage("Speech recognizer unavailable", ERROR_NATIVE_MODULE_UNAVAILABLE),
+      )
       return
     }
     if (!ensurePermissionGranted(promise)) {
@@ -301,7 +337,13 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
       sharedPreferences.edit().putBoolean(KEY_PERMISSION_REQUESTED, true).apply()
       activity.requestPermissions(arrayOf(Manifest.permission.RECORD_AUDIO), REQUEST_CODE, this)
     } else {
-      promise.reject(ERROR_CODE, "Host activity does not support permission requests")
+      promise.reject(
+        ERROR_CODE,
+        formatErrorMessage(
+          "Host activity does not support permission requests",
+          ERROR_TRANSIENT_NATIVE_FAILURE,
+        ),
+      )
     }
   }
 
@@ -327,6 +369,16 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
   private fun resolveStopPromise(result: String) {
     stopPromise?.resolve(result)
     stopPromise = null
+  }
+
+  private fun formatErrorMessage(message: String?, errorCode: String): String {
+    val payload = JSONObject().apply {
+      put("error_code", errorCode)
+      if (!message.isNullOrBlank()) {
+        put("message", message)
+      }
+    }
+    return payload.toString()
   }
 
   override fun onCatalystInstanceDestroy() {
@@ -359,6 +411,12 @@ class SpeechModule(private val reactContext: ReactApplicationContext) :
     private const val EVENT_FINAL = "stt_final"
     private const val EVENT_ERROR = "stt_error"
     private const val EVENT_PERMISSION_DENIED = "stt_permission_denied"
+    private const val ERROR_PERMISSION_DENIED = "permission_denied"
+    private const val ERROR_TIMEOUT = "timeout"
+    private const val ERROR_NETWORK_FAILURE = "network_failure"
+    private const val ERROR_NO_SPEECH_DETECTED = "no_speech_detected"
+    private const val ERROR_NATIVE_MODULE_UNAVAILABLE = "native_module_unavailable"
+    private const val ERROR_TRANSIENT_NATIVE_FAILURE = "transient_native_failure"
     private const val PERMISSION_GRANTED = "granted"
     private const val PERMISSION_DENIED = "denied"
     private const val PERMISSION_BLOCKED = "blocked"

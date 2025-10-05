@@ -25,14 +25,18 @@ type TranscriptionEvent = {
 
 type ErrorEvent = {
   message?: string;
-  error_code?: string | number | null;
+  error_code: string;
+};
+
+type PermissionDeniedEvent = {
+  error_code: 'permission_denied';
 };
 
 export type SpeechEventPayloadMap = {
   stt_partial: TranscriptionEvent;
   stt_final: TranscriptionEvent;
   stt_error: ErrorEvent;
-  stt_permission_denied: Record<string, never>;
+  stt_permission_denied: PermissionDeniedEvent;
 };
 
 export type SpeechEventName = keyof SpeechEventPayloadMap;
@@ -181,7 +185,7 @@ if (eventEmitter && nativeModule) {
   });
 
   eventEmitter.addListener('stt_permission_denied', payload => {
-    handleNativeEvent('stt_permission_denied', payload as Record<string, never>);
+    handleNativeEvent('stt_permission_denied', payload as PermissionDeniedEvent);
   });
 }
 
