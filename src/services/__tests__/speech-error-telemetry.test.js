@@ -48,7 +48,7 @@ describe('speech native error telemetry', () => {
     });
 
     const reactNative = require('react-native');
-    const errorListeners = reactNative.__listeners['stt_error'];
+    const errorListeners = reactNative.__listeners.stt_error;
     expect(errorListeners).toBeDefined();
     expect(errorListeners.length).toBeGreaterThan(0);
 
