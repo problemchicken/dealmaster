@@ -2,6 +2,8 @@ import type {
   NormalizedErrorCode,
   SttTelemetryEvent,
   SttTelemetryPayloadFor,
+  SpeechPipelineTelemetryEvent,
+  SpeechPipelineTelemetryPayloadFor,
 } from '../types/telemetry';
 
 declare const __DEV__: boolean;
@@ -127,6 +129,13 @@ export const normalizeTelemetryErrorCode = (
 export const trackSttEvent = <E extends SttTelemetryEvent>(
   event: E,
   payload: SttTelemetryPayloadFor<E>,
+): void => {
+  track(event, payload);
+};
+
+export const trackSpeechPipelineEvent = <E extends SpeechPipelineTelemetryEvent>(
+  event: E,
+  payload: SpeechPipelineTelemetryPayloadFor<E>,
 ): void => {
   track(event, payload);
 };

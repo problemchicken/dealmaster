@@ -26,6 +26,8 @@ export type SttTelemetryEvent =
   | 'stt_permission_denied'
   | 'stt_send';
 
+export type SpeechPipelineTelemetryEvent = 'speech_pipeline_complete';
+
 export interface SttOpenTelemetryPayload extends BaseTelemetryProps {
   locale?: string | null;
   native_flag?: boolean;
@@ -62,6 +64,14 @@ export interface SttSendTelemetryPayload extends BaseTelemetryProps {
   transcript?: string;
 }
 
+export interface SpeechPipelineCompleteTelemetryPayload extends BaseTelemetryProps {
+  duration_ms: number;
+  error_rate: 0 | 1;
+  transcript_length?: number;
+  error_code?: NormalizedErrorCode;
+  error_message?: string;
+}
+
 export type SttTelemetryPayloadMap = {
   stt_open: SttOpenTelemetryPayload;
   stt_partial: SttPartialTelemetryPayload;
@@ -75,6 +85,14 @@ export type SttTelemetryPayload = SttTelemetryPayloadMap[SttTelemetryEvent];
 
 export type SttTelemetryPayloadFor<Event extends SttTelemetryEvent> =
   SttTelemetryPayloadMap[Event];
+
+export type SpeechPipelineTelemetryPayloadMap = {
+  speech_pipeline_complete: SpeechPipelineCompleteTelemetryPayload;
+};
+
+export type SpeechPipelineTelemetryPayloadFor<
+  Event extends SpeechPipelineTelemetryEvent,
+> = SpeechPipelineTelemetryPayloadMap[Event];
 
 // OCR events
 export type OcrTelemetryEvent =

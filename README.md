@@ -107,6 +107,8 @@ subscription();
 
   End the stream with `Ctrl+C` once you observe `stt_final` firing.
 
+- **Negotiation pipeline** – Use `submitSpeechNegotiationSample()` from [`src/services/speechNegotiation.ts`](src/services/speechNegotiation.ts) to forward captured audio (Base64) to your backend `/api/speech-endpoint`. The helper automatically records end-to-end latency and error rate telemetry via the new `speech_pipeline_complete` event.
+
 - **Telemetry expectations** – Example payloads emitted via `trackSttEvent`:
 
   ```ts
