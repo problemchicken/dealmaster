@@ -26,6 +26,8 @@ type TranscriptionEvent = {
 type ErrorEvent = {
   message?: string;
   error_code: string;
+  retry_count?: number;
+  will_retry?: boolean;
 };
 
 type PermissionDeniedEvent = {
@@ -130,6 +132,12 @@ const emitTelemetry = <E extends SpeechEventName>(
       };
       if (typeof errorPayload.message === 'string') {
         telemetry.message = errorPayload.message;
+      }
+      if (typeof errorPayload.retry_count === 'number') {
+        telemetry.retry_count = errorPayload.retry_count;
+      }
+      if (typeof errorPayload.will_retry === 'boolean') {
+        telemetry.will_retry = errorPayload.will_retry;
       }
       trackSttEvent('stt_error', telemetry);
       return;
