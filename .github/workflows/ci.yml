@@ -28,4 +28,5 @@ jobs:
       - name: Lint
         env:
           ESLINT_USE_FLAT_CONFIG: 'false'
+          TSESTREE_NO_WARN_ON_UNSUPPORTED_TYPESCRIPT_VERSION: '1'
         run: npm run lint -- --max-warnings=0 --config .eslintrc.js
