@@ -29,7 +29,8 @@ const buildTelemetryPayload = (
 ): SpeechPipelineTelemetryPayloadFor<'speech_pipeline_complete'> => ({
   platform: getTelemetryPlatform(),
   provider: SPEECH_PIPELINE_PROVIDER,
-  duration_ms: overrides.duration_ms ?? 0,
+  total_duration_ms: overrides.total_duration_ms ?? 0,
+  endpoint_latency_ms: overrides.endpoint_latency_ms,
   error_rate: overrides.error_rate ?? 0,
   transcript_length: overrides.transcript_length,
   error_code: overrides.error_code,
@@ -105,7 +106,8 @@ export const submitSpeechNegotiationSample = async (
     const transcriptLength = response.data?.transcript?.length ?? 0;
 
     const telemetryPayload = buildTelemetryPayload({
-      duration_ms: duration,
+      total_duration_ms: duration,
+      endpoint_latency_ms: duration,
       error_rate: 0,
       transcript_length: transcriptLength > 0 ? transcriptLength : undefined,
     });
@@ -120,7 +122,8 @@ export const submitSpeechNegotiationSample = async (
     );
 
     const telemetryPayload = buildTelemetryPayload({
-      duration_ms: duration,
+      total_duration_ms: duration,
+      endpoint_latency_ms: duration,
       error_rate: 1,
       error_code: normalizedErrorCode,
       error_message: resolveErrorMessage(error),

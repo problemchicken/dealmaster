@@ -171,6 +171,12 @@ const SettingsScreen: React.FC<Props> = ({navigation}) => {
         </View>
 
         <PrimaryButton
+          title="Speech Debug / QA"
+          onPress={() => navigation.navigate('SpeechTest')}
+          style={styles.actionButton}
+        />
+
+        <PrimaryButton
           title="View Deals"
           onPress={() => navigation.navigate('Home')}
           style={styles.actionButton}
