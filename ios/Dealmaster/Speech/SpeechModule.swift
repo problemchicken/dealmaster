@@ -64,7 +64,10 @@ class SpeechModule: RCTEventEmitter {
   }
 
   private func emitPermissionDenied() {
-    emitTelemetry(event: "stt_permission_denied", payload: [:])
+    emitTelemetry(
+      event: "stt_permission_denied",
+      payload: ["error_code": "permission_denied"]
+    )
   }
 
   private func emitPartialTranscription(_ transcription: String, isFinal: Bool) {
@@ -100,6 +103,22 @@ class SpeechModule: RCTEventEmitter {
     }
 
     emitTelemetry(event: "stt_error", payload: payload)
+  }
+
+  private func formatErrorMessage(_ message: String?, errorCode: String) -> String {
+    var payload: [String: Any] = [
+      "error_code": errorCode,
+    ]
+
+    if let message, !message.isEmpty {
+      payload["message"] = message
+    }
+
+    if let data = try? JSONSerialization.data(withJSONObject: payload, options: []) {
+      return String(data: data, encoding: .utf8) ?? "{\"error_code\":\"\(errorCode)\"}"
+    }
+
+    return "{\"error_code\":\"\(errorCode)\"}"
   }
 
   private func normalizedErrorCode(for error: NSError) -> String {
@@ -245,7 +264,9 @@ class SpeechModule: RCTEventEmitter {
         }
       }
 
-      pendingReject?("stt_error", error.localizedDescription, error)
+      let normalizedCode = normalizedErrorCode(for: error)
+      let formattedMessage = formatErrorMessage(error.localizedDescription, errorCode: normalizedCode)
+      pendingReject?("stt_error", formattedMessage, error)
       emitError(error)
       teardownSession()
       return
@@ -273,12 +294,14 @@ class SpeechModule: RCTEventEmitter {
     }
 
     guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+      let errorMessage = "Speech recognizer is unavailable"
+      let errorCode = "native_module_unavailable"
       emitSetupError(
-        message: "Speech recognizer is unavailable",
-        code: "native_module_unavailable"
+        message: errorMessage,
+        code: errorCode
       )
       DispatchQueue.main.async {
-        reject("stt_error", "Speech recognizer is unavailable", nil)
+        reject("stt_error", self.formatErrorMessage(errorMessage, errorCode: errorCode), nil)
         self.teardownSession()
       }
       return
@@ -290,7 +313,11 @@ class SpeechModule: RCTEventEmitter {
       if authStatus != .authorized {
         DispatchQueue.main.async {
           self.emitPermissionDenied()
-          reject("stt_error", "Speech recognition permission denied", nil)
+          reject(
+            "stt_error",
+            self.formatErrorMessage("Speech recognition permission denied", errorCode: "permission_denied"),
+            nil
+          )
           self.teardownSession()
         }
         return
@@ -300,7 +327,11 @@ class SpeechModule: RCTEventEmitter {
         DispatchQueue.main.async {
           guard granted else {
             self.emitPermissionDenied()
-            reject("stt_error", "Microphone permission denied", nil)
+            reject(
+              "stt_error",
+              self.formatErrorMessage("Microphone permission denied", errorCode: "permission_denied"),
+              nil
+            )
             self.teardownSession()
             return
           }
@@ -312,7 +343,8 @@ class SpeechModule: RCTEventEmitter {
           } catch {
             let nsError = error as NSError
             self.emitError(nsError)
-            reject("stt_error", error.localizedDescription, nsError)
+            let normalized = self.normalizedErrorCode(for: nsError)
+            reject("stt_error", self.formatErrorMessage(error.localizedDescription, errorCode: normalized), nsError)
             self.teardownSession()
           }
         }
