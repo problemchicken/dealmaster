@@ -6,36 +6,37 @@ import React
 @objc(SpeechModule)
 class SpeechModule: RCTEventEmitter {
   private let audioEngine = AVAudioEngine()
+  private let audioSession = AVAudioSession.sharedInstance()
   private var speechRecognizer: SFSpeechRecognizer? =
     SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
   private var recognitionTask: SFSpeechRecognitionTask?
   private var lastTranscription: String?
-  private var resolve: RCTPromiseResolveBlock?
-  private var reject: RCTPromiseRejectBlock?
+  private var pendingResolve: RCTPromiseResolveBlock?
+  private var pendingReject: RCTPromiseRejectBlock?
   private var sessionStartDate: Date?
   private var isUserInitiatedStop = false
   private var isUserInitiatedCancel = false
   private var isFinishing = false
 
   deinit {
-    resetSession()
+    teardownSession()
   }
 
   override static func requiresMainQueueSetup() -> Bool {
-    return true
+    true
   }
 
   override func supportedEvents() -> [String]! {
-    return [
+    [
       "stt_partial",
       "stt_final",
       "stt_error",
-      "stt_permission_denied"
+      "stt_permission_denied",
     ]
   }
 
-  private func resetSession() {
+  private func teardownSession() {
     recognitionTask?.cancel()
     recognitionTask = nil
     recognitionRequest?.endAudio()
@@ -47,8 +48,10 @@ class SpeechModule: RCTEventEmitter {
       audioEngine.reset()
     }
 
-    resolve = nil
-    reject = nil
+    try? audioSession.setActive(false, options: [.notifyOthersOnDeactivation])
+
+    pendingResolve = nil
+    pendingReject = nil
     lastTranscription = nil
     sessionStartDate = nil
     isUserInitiatedStop = false
@@ -72,7 +75,7 @@ class SpeechModule: RCTEventEmitter {
       "text": transcription,
       "isFinal": isFinal,
       "duration": duration,
-      "chars": transcription.count
+      "chars": transcription.count,
     ]
 
     if isFinal {
@@ -89,7 +92,7 @@ class SpeechModule: RCTEventEmitter {
 
   private func emitError(message: String?, errorCode: String) {
     var payload: [String: Any] = [
-      "error_code": errorCode
+      "error_code": errorCode,
     ]
 
     if let message, !message.isEmpty {
@@ -133,7 +136,14 @@ class SpeechModule: RCTEventEmitter {
   }
 
   private func isRecognizerAvailable() -> Bool {
-    guard let recognizer = speechRecognizer else { return false }
+    if speechRecognizer == nil {
+      speechRecognizer = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
+    }
+
+    guard let recognizer = speechRecognizer else {
+      return false
+    }
+
     return recognizer.isAvailable
   }
 
@@ -155,79 +165,34 @@ class SpeechModule: RCTEventEmitter {
     guard isRecognizerAvailable() else {
       return "unavailable"
     }
+
     let speechStatus = SFSpeechRecognizer.authorizationStatus()
-    let micStatus = AVAudioSession.sharedInstance().recordPermission
+    let micStatus = audioSession.recordPermission
     return permissionStatus(speech: speechStatus, micPermission: micStatus)
   }
 
-  @objc
-  func startTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
-                         rejecter reject: @escaping RCTPromiseRejectBlock) {
-    isUserInitiatedStop = false
-    isUserInitiatedCancel = false
-    isFinishing = false
-    lastTranscription = nil
-
-    if speechRecognizer == nil {
-      speechRecognizer = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
-    }
-
-    guard let recognizer = speechRecognizer, recognizer.isAvailable else {
-      emitSetupError(message: "Speech recognizer is unavailable", code: "native_module_unavailable")
-      DispatchQueue.main.async {
-        reject("stt_error", "Speech recognizer is unavailable", nil)
-        self.resetSession()
-      }
-      return
-    }
-
-    SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
-      guard let self else { return }
-
-      if authStatus != .authorized {
-        DispatchQueue.main.async {
-          self.emitPermissionDenied()
-          reject("stt_error", "Speech recognition permission denied", nil)
-          self.resetSession()
-        }
-        return
-      }
-
-      AVAudioSession.sharedInstance().requestRecordPermission { granted in
-        DispatchQueue.main.async {
-          guard granted else {
-            self.emitPermissionDenied()
-            reject("stt_error", "Microphone permission denied", nil)
-            self.resetSession()
-            return
-          }
-          do {
-            self.sessionStartDate = Date()
-            try self.startRecording(with: recognizer)
-            resolve(true)
-          } catch {
-            let nsError = error as NSError
-            self.emitError(nsError)
-            reject("stt_error", error.localizedDescription, nsError)
-            self.resetSession()
-          }
-        }
-      }
-    }
+  private func prepareAudioSession() throws {
+    try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+    try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
   }
 
   private func startRecording(with recognizer: SFSpeechRecognizer) throws {
-    let audioSession = AVAudioSession.sharedInstance()
-    try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
-    try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    try prepareAudioSession()
 
     recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+
     guard let recognitionRequest else {
-      throw NSError(domain: "SpeechModule", code: -1, userInfo: [NSLocalizedDescriptionKey: "Unable to create recognition request"])
+      throw NSError(
+        domain: "SpeechModule",
+        code: -1,
+        userInfo: [NSLocalizedDescriptionKey: "Unable to create recognition request"]
+      )
     }
+
     recognitionRequest.shouldReportPartialResults = true
 
-    recognitionTask = recognizer.recognitionTask(with: recognitionRequest) { [weak self] result, error in
+    recognitionTask = recognizer.recognitionTask(with: recognitionRequest) {
+      [weak self] result, error in
       guard let self else { return }
 
       if let result {
@@ -247,68 +212,13 @@ class SpeechModule: RCTEventEmitter {
     }
 
     let recordingFormat = audioEngine.inputNode.outputFormat(forBus: 0)
-    audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) { buffer, _ in
-      self.recognitionRequest?.append(buffer)
+    audioEngine.inputNode.installTap(onBus: 0, bufferSize: 1024, format: recordingFormat) {
+      [weak self] buffer, _ in
+      self?.recognitionRequest?.append(buffer)
     }
 
     audioEngine.prepare()
     try audioEngine.start()
-  }
-
-  @objc
-  func stopTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
-                        rejecter reject: @escaping RCTPromiseRejectBlock) {
-    guard recognitionTask != nil else {
-      resolve(lastTranscription ?? "")
-      return
-    }
-    isUserInitiatedStop = true
-    isUserInitiatedCancel = false
-    self.resolve = resolve
-    self.reject = reject
-    recognitionRequest?.endAudio()
-  }
-
-  @objc
-  func cancelTranscribing(_ resolve: @escaping RCTPromiseResolveBlock,
-                          rejecter reject: @escaping RCTPromiseRejectBlock) {
-    guard recognitionTask != nil else {
-      resolve("")
-      return
-    }
-    isUserInitiatedStop = false
-    isUserInitiatedCancel = true
-    self.resolve = resolve
-    self.reject = reject
-    recognitionTask?.cancel()
-  }
-
-  @objc
-  func getPermissionStatus(_ resolve: @escaping RCTPromiseResolveBlock,
-                           rejecter _: @escaping RCTPromiseRejectBlock) {
-    resolve(currentPermissionStatus())
-  }
-
-  @objc
-  func requestPermission(_ resolve: @escaping RCTPromiseResolveBlock,
-                         rejecter _: @escaping RCTPromiseRejectBlock) {
-    guard isRecognizerAvailable() else {
-      resolve("unavailable")
-      return
-    }
-    SFSpeechRecognizer.requestAuthorization { [weak self] speechStatus in
-      guard let self else { return }
-
-      AVAudioSession.sharedInstance().requestRecordPermission { granted in
-        DispatchQueue.main.async {
-          let recordPermission: AVAudioSession.RecordPermission = granted ? .granted : .denied
-          if speechStatus != .authorized || !granted {
-            self.emitPermissionDenied()
-          }
-          resolve(self.permissionStatus(speech: speechStatus, micPermission: recordPermission))
-        }
-      }
-    }
   }
 
   private func handleTaskCompletion(error: Error?) {
@@ -319,29 +229,169 @@ class SpeechModule: RCTEventEmitter {
 
     if let error = error as NSError? {
       let canceledCode = SFSpeechErrorCode.canceled.rawValue
+
       if error.domain == SFSpeechRecognitionErrorDomain && error.code == canceledCode {
         if isUserInitiatedCancel {
-          resolve?("")
-          resetSession()
+          pendingResolve?("")
+          teardownSession()
           return
         }
 
         if isUserInitiatedStop {
-          resolve?(finalText)
+          pendingResolve?(finalText)
           emitSttFinalIfNeeded(finalText)
-          resetSession()
+          teardownSession()
           return
         }
       }
 
-      reject?("stt_error", error.localizedDescription, error)
+      pendingReject?("stt_error", error.localizedDescription, error)
       emitError(error)
-      resetSession()
+      teardownSession()
       return
     }
 
-    resolve?(finalText)
+    pendingResolve?(finalText)
     emitSttFinalIfNeeded(finalText)
-    resetSession()
+    teardownSession()
+  }
+
+  @objc
+  func startTranscribing(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    isUserInitiatedStop = false
+    isUserInitiatedCancel = false
+    isFinishing = false
+    lastTranscription = nil
+    pendingResolve = nil
+    pendingReject = nil
+
+    if speechRecognizer == nil {
+      speechRecognizer = SFSpeechRecognizer(locale: Locale.autoupdatingCurrent)
+    }
+
+    guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+      emitSetupError(
+        message: "Speech recognizer is unavailable",
+        code: "native_module_unavailable"
+      )
+      DispatchQueue.main.async {
+        reject("stt_error", "Speech recognizer is unavailable", nil)
+        self.teardownSession()
+      }
+      return
+    }
+
+    SFSpeechRecognizer.requestAuthorization { [weak self] authStatus in
+      guard let self else { return }
+
+      if authStatus != .authorized {
+        DispatchQueue.main.async {
+          self.emitPermissionDenied()
+          reject("stt_error", "Speech recognition permission denied", nil)
+          self.teardownSession()
+        }
+        return
+      }
+
+      self.audioSession.requestRecordPermission { granted in
+        DispatchQueue.main.async {
+          guard granted else {
+            self.emitPermissionDenied()
+            reject("stt_error", "Microphone permission denied", nil)
+            self.teardownSession()
+            return
+          }
+
+          do {
+            self.sessionStartDate = Date()
+            try self.startRecording(with: recognizer)
+            resolve(true)
+          } catch {
+            let nsError = error as NSError
+            self.emitError(nsError)
+            reject("stt_error", error.localizedDescription, nsError)
+            self.teardownSession()
+          }
+        }
+      }
+    }
+  }
+
+  @objc
+  func stopTranscribing(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard recognitionTask != nil else {
+      resolve(lastTranscription ?? "")
+      return
+    }
+
+    isUserInitiatedStop = true
+    isUserInitiatedCancel = false
+    pendingResolve = resolve
+    pendingReject = reject
+    recognitionRequest?.endAudio()
+  }
+
+  @objc
+  func cancelTranscribing(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter reject: @escaping RCTPromiseRejectBlock
+  ) {
+    guard recognitionTask != nil else {
+      resolve("")
+      return
+    }
+
+    isUserInitiatedStop = false
+    isUserInitiatedCancel = true
+    pendingResolve = resolve
+    pendingReject = reject
+    recognitionTask?.cancel()
+  }
+
+  @objc
+  func getPermissionStatus(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter _: @escaping RCTPromiseRejectBlock
+  ) {
+    resolve(currentPermissionStatus())
+  }
+
+  @objc
+  func requestPermission(
+    _ resolve: @escaping RCTPromiseResolveBlock,
+    rejecter _: @escaping RCTPromiseRejectBlock
+  ) {
+    guard isRecognizerAvailable() else {
+      resolve("unavailable")
+      return
+    }
+
+    SFSpeechRecognizer.requestAuthorization { [weak self] speechStatus in
+      guard let self else { return }
+
+      self.audioSession.requestRecordPermission { granted in
+        DispatchQueue.main.async {
+          let recordPermission: AVAudioSession.RecordPermission =
+            granted ? .granted : .denied
+
+          if speechStatus != .authorized || !granted {
+            self.emitPermissionDenied()
+          }
+
+          resolve(
+            self.permissionStatus(
+              speech: speechStatus,
+              micPermission: recordPermission
+            )
+          )
+        }
+      }
+    }
   }
 }
