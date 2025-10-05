@@ -2,10 +2,12 @@ declare const __DEV__: boolean;
 
 import {NativeEventEmitter, NativeModules, Platform} from 'react-native';
 import type {NativeModule} from 'react-native';
-import {trackSttEvent} from './telemetry';
+import {
+  normalizeTelemetryErrorCode,
+  trackSttEvent,
+} from './telemetry';
 import type {
   BaseTelemetryProps,
-  NormalizedErrorCode,
   SttTelemetryPayloadFor,
 } from '../types/telemetry';
 
@@ -75,42 +77,6 @@ const basePayload = (): BaseTelemetryProps => ({
 
 const resolveTextLength = ({text}: TranscriptionEvent): number => text.length;
 
-const NORMALIZED_ERROR_CODE_MAP: Record<string, NormalizedErrorCode> = {
-  permission_denied: 'permission_denied',
-  timeout: 'timeout',
-  network_failure: 'network_failure',
-  quota_exhausted: 'quota_exhausted',
-  native_module_unavailable: 'native_module_unavailable',
-  no_speech_detected: 'no_speech_detected',
-  no_text_detected: 'no_text_detected',
-  transient_native_failure: 'transient_native_failure',
-  unavailable: 'native_module_unavailable',
-  module_unavailable: 'native_module_unavailable',
-  permission_request_failed: 'transient_native_failure',
-  '3': 'transient_native_failure',
-  '4': 'transient_native_failure',
-  '5': 'transient_native_failure',
-  '1': 'network_failure',
-  '2': 'network_failure',
-  '6': 'timeout',
-  '7': 'no_speech_detected',
-  '8': 'transient_native_failure',
-  '9': 'permission_denied',
-};
-
-const normalizeErrorCode = (code: unknown): NormalizedErrorCode => {
-  if (code == null) {
-    return 'transient_native_failure';
-  }
-
-  const normalized = NORMALIZED_ERROR_CODE_MAP[String(code)];
-  if (normalized) {
-    return normalized;
-  }
-
-  return 'transient_native_failure';
-};
-
 let partialSequenceId = 0;
 
 const toMilliseconds = (durationInSeconds?: number): number | undefined => {
@@ -155,7 +121,7 @@ const emitTelemetry = <E extends SpeechEventName>(
       const errorPayload = payload as ErrorEvent;
       const telemetry: SttTelemetryPayloadFor<'stt_error'> = {
         ...basePayload(),
-        error_code: normalizeErrorCode(errorPayload.error_code),
+        error_code: normalizeTelemetryErrorCode(errorPayload.error_code),
         native_flag: true,
       };
       if (typeof errorPayload.message === 'string') {
