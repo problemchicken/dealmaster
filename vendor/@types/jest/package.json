@@ -1,0 +1,5 @@
+{
+  "name": "@types/jest",
+  "version": "29.5.12",
+  "types": "index.d.ts"
+}
