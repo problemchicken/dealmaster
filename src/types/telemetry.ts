@@ -65,7 +65,8 @@ export interface SttSendTelemetryPayload extends BaseTelemetryProps {
 }
 
 export interface SpeechPipelineCompleteTelemetryPayload extends BaseTelemetryProps {
-  duration_ms: number;
+  total_duration_ms: number;
+  endpoint_latency_ms?: number;
   error_rate: 0 | 1;
   transcript_length?: number;
   error_code?: NormalizedErrorCode;

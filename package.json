@@ -8,6 +8,8 @@
     "ios": "react-native run-ios",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
+    "jest": "jest",
+    "test:e2e": "jest src/services/__tests__/speechNegotiation.e2e.test.ts",
     "ci": "npm run lint && npm run typecheck"
   },
   "dependencies": {

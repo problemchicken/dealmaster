@@ -149,14 +149,16 @@ export const speechPipelineCompleteExamples: SpeechPipelineCompleteTelemetryPayl
   {
     platform: 'ios',
     provider: 'speech_pipeline',
-    duration_ms: 1250,
+    total_duration_ms: 1250,
+    endpoint_latency_ms: 900,
     error_rate: 0,
     transcript_length: 42,
   },
   {
     platform: 'ios',
     provider: 'speech_pipeline',
-    duration_ms: 980,
+    total_duration_ms: 980,
+    endpoint_latency_ms: 780,
     error_rate: 1,
     error_code: 'network_failure',
     error_message: 'ECONNRESET',

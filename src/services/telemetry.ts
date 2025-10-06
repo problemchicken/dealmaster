@@ -10,10 +10,36 @@ declare const __DEV__: boolean;
 
 export type TelemetryPayload = object | undefined;
 
+type TelemetryListener = (event: string, payload: TelemetryPayload) => void;
+
+const telemetryListeners = new Set<TelemetryListener>();
+
+export const addTelemetryListener = (
+  listener: TelemetryListener,
+): (() => void) => {
+  telemetryListeners.add(listener);
+  return () => {
+    telemetryListeners.delete(listener);
+  };
+};
+
+const emitTelemetry = (event: string, payload: TelemetryPayload): void => {
+  telemetryListeners.forEach(listener => {
+    try {
+      listener(event, payload);
+    } catch (error) {
+      if (typeof __DEV__ !== 'undefined' && __DEV__) {
+        console.warn('Telemetry listener failed', error);
+      }
+    }
+  });
+};
+
 export const track = (event: string, payload?: TelemetryPayload): void => {
   try {
     // In production this can be replaced with a real analytics sink.
     console.log(`[telemetry] ${event}`, payload ?? {});
+    emitTelemetry(event, payload);
   } catch (error) {
     // Swallow logging errors to avoid interrupting user flows.
     if (typeof __DEV__ !== 'undefined' && __DEV__) {

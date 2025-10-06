@@ -6,5 +6,6 @@ export type RootStackParamList = {
   Chat: ChatScreenParams | undefined;
   OcrConfirm: {extractedText: string; sessionId?: string; title?: string};
   Settings: undefined;
+  SpeechTest: undefined;
   Login: undefined;
 };

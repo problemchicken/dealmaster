@@ -99,10 +99,11 @@ subscription();
   xcrun simctl privacy booted microphone deny com.dealmaster
   ```
 
-- **Microphone input** – Feed canned audio to the simulator microphone while testing partial/final events:
+- **Microphone input** – Feed canned audio to the simulator microphone while testing partial/final events。先以 `node scripts/make-sample-wav.js` 產生 `tmp/sample-command.wav`：
 
   ```bash
-  xcrun simctl io booted microphone ./fixtures/sample-command.wav
+  node scripts/make-sample-wav.js tmp/sample-command.wav
+  xcrun simctl io booted microphone ./tmp/sample-command.wav
   ```
 
   End the stream with `Ctrl+C` once you observe `stt_final` firing.
@@ -158,6 +159,43 @@ For native OCR flag、權限與本機執行說明，請參考 [docs/ocr.md](docs
 
 - Run `npm run lint` to check for lint issues
 - Run `npm run typecheck` to verify TypeScript typings
+
+## E2E / 真機驗證
+
+### App 內部驗證
+
+- 前往 **Settings → Speech Debug / QA**，可於 `SpeechTest` 頁啟動語音錄製、檢視最新策略建議與 `speech_pipeline_complete` Telemetry。
+- 頁面會即時列出最近 25 筆 telemetry payload、最後一次送出的 `/api/speech-endpoint` 請求與回覆，方便 QA 與除錯。
+
+### 本機自動化腳本
+
+1. 需一次授權 iOS 模擬器的麥克風 / 語音辨識權限（macOS）：
+
+   ```bash
+   xcrun simctl privacy booted microphone grant com.dealmaster
+   xcrun simctl privacy booted speech-recognition grant com.dealmaster
+   ```
+
+2. 執行端對端驗證腳本（會啟動內建 mock server、先以 `scripts/make-sample-wav.js` 產生 `tmp/sample-command.wav`，再餵入該檔案並解析回覆／telemetry）：
+
+   ```bash
+   bash scripts/e2e-local.sh
+   ```
+
+   指令結束時應輸出：
+
+   ```
+   ASR final text: ...
+   Strategy: ... , EmotionScore: ...
+   Telemetry: speech_pipeline_complete total_duration=...ms endpoint_latency=...ms
+   ```
+
+3. 相關紀錄（請求、回應、telemetry、伺服器日誌）會寫入 `artifacts/e2e-local/` 供後續檢視。
+
+### CI Smoke 測試
+
+- GitHub Actions 於 Pull Request 中會觸發 `e2e-smoke` job，使用 `scripts/ci-e2e-smoke.sh` 跑一次最短路徑驗證並上傳 `artifacts/e2e-smoke/`。
+- 失敗時 job 會回傳非零狀態並顯示 mock 伺服器輸出，協助定位端對端整合問題。
 
 ## License
 

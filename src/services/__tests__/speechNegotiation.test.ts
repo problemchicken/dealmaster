@@ -60,7 +60,8 @@ describe('submitSpeechNegotiationSample', () => {
       expect.objectContaining({
         platform: 'ios',
         provider: 'speech_pipeline',
-        duration_ms: 600,
+        total_duration_ms: 600,
+        endpoint_latency_ms: 600,
         error_rate: 0,
         transcript_length: 11,
       }),
@@ -95,7 +96,8 @@ describe('submitSpeechNegotiationSample', () => {
     expect(mockTrackSpeechPipelineEvent).toHaveBeenCalledWith(
       'speech_pipeline_complete',
       expect.objectContaining({
-        duration_ms: 600,
+        total_duration_ms: 600,
+        endpoint_latency_ms: 600,
         error_rate: 1,
         error_code: 'ECONNABORTED',
         error_message: 'network failure',

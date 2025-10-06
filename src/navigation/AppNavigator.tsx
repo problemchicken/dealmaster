@@ -4,6 +4,7 @@ import {createNativeStackNavigator} from '@react-navigation/native-stack';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import SettingsScreen from '../screens/SettingsScreen';
+import SpeechTestScreen from '../screens/SpeechTestScreen';
 import ChatScreen from '../screens/ChatScreen';
 import ChatListScreen from '../screens/ChatListScreen';
 import OcrConfirmScreen from '../screens/OcrConfirmScreen';
@@ -39,6 +40,11 @@ const AppNavigator: React.FC = () => {
               options={{title: 'OCR 預覽'}}
             />
             <Stack.Screen name="Settings" component={SettingsScreen} />
+            <Stack.Screen
+              name="SpeechTest"
+              component={SpeechTestScreen}
+              options={{title: 'Speech QA'}}
+            />
           </>
         ) : (
           <Stack.Screen
