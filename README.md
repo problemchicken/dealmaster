@@ -88,6 +88,15 @@ subscription();
 - No extra React Native registration is required — the Swift bridge is exported through `SpeechModuleBridge.m` and is available as `NativeModules.SpeechModule`.
 - For local development run `npx pod-install` after installing JavaScript dependencies so the native module is compiled into the iOS project.
 
+### 本機一鍵啟動 iOS 模擬器
+
+```bash
+chmod +x scripts/run_ios_sim.sh
+./scripts/run_ios_sim.sh
+```
+
+> 備註：首次編譯需要較長時間屬正常現象；若機器沒有 iPhone 17 Pro 模擬器，腳本會自動回退到現有可用的裝置類型。
+
 ### Testing notes
 
 - **Permissions** – Use `requestPermission()` to trigger the native prompt. On the iOS Simulator you can script responses with:
