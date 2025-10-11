@@ -1,0 +1,116 @@
+name: iOS Simulator Build
+
+on:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build on iOS simulator
+    runs-on: macos-14
+
+    env:
+      DERIVED_DATA_PATH: ios/build/DerivedData
+      ARTIFACTS_DIR: artifacts
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cocoapods
+            ios/Pods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-pods-
+
+      - name: Install CocoaPods
+        run: |
+          brew install cocoapods || sudo gem install cocoapods
+
+      - name: Install iOS Pods
+        working-directory: ios
+        run: |
+          pod install || pod install --repo-update
+
+      - name: List available runtimes and devices
+        run: xcrun simctl list
+
+      - name: Ensure iPhone 15 Pro simulator exists
+        run: |
+          if ! xcrun simctl list devices available | grep -q "iPhone 15 Pro"; then
+            xcrun simctl create "CI iPhone 15 Pro" "iPhone 15 Pro" "$(xcrun simctl list runtimes | awk -F'[()]' '/iOS/ {print $2; exit}')" || true
+          fi
+
+      - name: Detect Xcode scheme
+        id: detect_scheme
+        run: |
+          SCHEME=$(xcodebuild -list -workspace ios/DealMaster.xcworkspace | awk '/Schemes:/ {getline; gsub(/^[ \t]+/, "", $0); print; exit}')
+          if [ -z "$SCHEME" ]; then
+            echo "Unable to detect an Xcode scheme" >&2
+            exit 1
+          fi
+          echo "Detected scheme: $SCHEME"
+          echo "XCODE_SCHEME=$SCHEME" >> "$GITHUB_ENV"
+
+      - name: Build with xcodebuild
+        run: |
+          mkdir -p "$ARTIFACTS_DIR"
+          set -o pipefail
+          xcodebuild \
+            -workspace ios/DealMaster.xcworkspace \
+            -scheme "$XCODE_SCHEME" \
+            -destination 'platform=iOS Simulator,name=iPhone 15 Pro' \
+            -derivedDataPath "$DERIVED_DATA_PATH" \
+            build | tee "$ARTIFACTS_DIR/build-log.txt"
+
+      - name: Archive build artifacts
+        if: always()
+        run: |
+          mkdir -p "$ARTIFACTS_DIR"
+          if [ -d "$DERIVED_DATA_PATH" ]; then
+            tar -czf "$ARTIFACTS_DIR/derived-data.tar.gz" -C "$(dirname "$DERIVED_DATA_PATH")" "$(basename "$DERIVED_DATA_PATH")"
+          fi
+          if [ -d "$DERIVED_DATA_PATH/Build/Products" ]; then
+            find "$DERIVED_DATA_PATH/Build/Products" -type d -name "*.app" -print0 | while IFS= read -r -d '' app; do
+              app_name=$(basename "$app")
+              ditto -c -k --sequesterRsrc --keepParent "$app" "$ARTIFACTS_DIR/${app_name}.zip"
+            done
+            find "$DERIVED_DATA_PATH/Build/Products" -type f -name "*.ipa" -print0 | while IFS= read -r -d '' ipa; do
+              cp "$ipa" "$ARTIFACTS_DIR/"
+            done
+          fi
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-simulator-build
+          path: ${{ env.ARTIFACTS_DIR }}
+          if-no-files-found: warn
+
+      - name: Debug simulator info on failure
+        if: failure()
+        run: |
+          echo "=== Simulator list ==="
+          xcrun simctl list
+          echo "=== Last 300 lines of build log ==="
+          if [ -f "$ARTIFACTS_DIR/build-log.txt" ]; then
+            tail -n 300 "$ARTIFACTS_DIR/build-log.txt"
+          else
+            echo "build-log.txt not found"
+          fi
