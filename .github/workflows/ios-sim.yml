@@ -1,0 +1,37 @@
+name: iOS Simulator
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios-sim:
+    runs-on: macos-14
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install CocoaPods
+        run: sudo gem install cocoapods
+
+      - name: Install iOS Pods
+        run: |
+          if [ ! -f "ios/Podfile" ]; then
+            echo "⚠️ No Podfile found. Skipping pod install."
+            exit 0
+          fi
+          cd ios
+          pod install || pod install --repo-update
+
+      - name: Run iOS simulator script
+        run: |
+          chmod +x scripts/run_ios_sim.sh
+          ./scripts/run_ios_sim.sh
