@@ -14,11 +14,8 @@
 !/android/app/src/main/AndroidManifest.xml
 !/android/app/src/main/java/com/dealmaster/SpeechModule.kt
 !/android/app/src/main/java/com/dealmaster/SpeechPackage.kt
-/ios
-!/ios/Dealmaster/
-!/ios/Dealmaster/Speech/
-!/ios/Dealmaster/Speech/SpeechModule.swift
-!/ios/Dealmaster/Speech/SpeechModuleBridge.m
+/ios/Pods/
+/ios/build/
 /expo
 
 # Logs
