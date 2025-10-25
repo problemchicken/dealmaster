@@ -12,8 +12,7 @@
 13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB01A68108700A75B9A /* AppDelegate.mm */; };
 13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 13B07FC11A68108700A75B9A /* main.m in Sources */ = {isa = PBXBuildFile; fileRef = 13B07FB71A68108700A75B9A /* main.m */; };
-2DF8C8522B6F525500D1E4AA /* SpeechModuleBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 2DF8C8502B6F525500D1E4AA /* SpeechModuleBridge.m */; };
-2DF8C8532B6F525500D1E4AA /* SpeechModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */; };
+                2DF8C8532B6F525500D1E4AA /* SpeechModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */; };
 7699B88040F8A987B510C191 /* libPods-Dealmaster-DealmasterTests.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 19F6CBCC0A4E27FBF8BF4A61 /* libPods-Dealmaster-DealmasterTests.a */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
@@ -45,8 +44,7 @@
 5DCACB8F33CDC322A6C60F78 /* libPods-Dealmaster.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-Dealmaster.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = Dealmaster/LaunchScreen.storyboard; sourceTree = "<group>"; };
 89C6BE57DB24E9ADA2F236DE /* Pods-Dealmaster-DealmasterTests.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-Dealmaster-DealmasterTests.release.xcconfig"; path = "Target Support Files/Pods-Dealmaster-DealmasterTests/Pods-Dealmaster-DealmasterTests.release.xcconfig"; sourceTree = "<group>"; };
-               2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = SpeechModule.swift; path = Dealmaster/Speech/SpeechModule.swift; sourceTree = "<group>"; };
-               2DF8C8502B6F525500D1E4AA /* SpeechModuleBridge.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = SpeechModuleBridge.m; path = Dealmaster/Speech/SpeechModuleBridge.m; sourceTree = "<group>"; };
+               2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechModule.swift; sourceTree = "<group>"; };
                2DF8C8582B6F7B2200D1E4AA /* Dealmaster-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; name = "Dealmaster-Bridging-Header.h"; path = Dealmaster/Dealmaster-Bridging-Header.h; sourceTree = "<group>"; };
 ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -88,30 +86,29 @@ ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReferenc
 			name = "Supporting Files";
 			sourceTree = "<group>";
 		};
-               13B07FAE1A68108700A75B9A /* Dealmaster */ = {
-                       isa = PBXGroup;
-                       children = (
-                               13B07FAF1A68108700A75B9A /* AppDelegate.h */,
-                               13B07FB01A68108700A75B9A /* AppDelegate.mm */,
-                               2DF8C84E2B6F525500D1E4AA /* Speech */,
-                               2DF8C8582B6F7B2200D1E4AA /* Dealmaster-Bridging-Header.h */,
-                               13B07FB51A68108700A75B9A /* Images.xcassets */,
-                               13B07FB61A68108700A75B9A /* Info.plist */,
-                               81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
-                               13B07FB71A68108700A75B9A /* main.m */,
-                       );
-                       name = Dealmaster;
-                       sourceTree = "<group>";
-               };
-2DF8C84E2B6F525500D1E4AA /* Speech */ = {
-isa = PBXGroup;
-children = (
-2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */,
-2DF8C8502B6F525500D1E4AA /* SpeechModuleBridge.m */,
-);
-path = Speech;
-sourceTree = "<group>";
-};
+                13B07FAE1A68108700A75B9A /* Dealmaster */ = {
+                        isa = PBXGroup;
+                        children = (
+                                13B07FAF1A68108700A75B9A /* AppDelegate.h */,
+                                13B07FB01A68108700A75B9A /* AppDelegate.mm */,
+                                2DF8C84E2B6F525500D1E4AA /* Speech */,
+                                2DF8C8582B6F7B2200D1E4AA /* Dealmaster-Bridging-Header.h */,
+                                13B07FB51A68108700A75B9A /* Images.xcassets */,
+                                13B07FB61A68108700A75B9A /* Info.plist */,
+                                81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
+                                13B07FB71A68108700A75B9A /* main.m */,
+                        );
+                        name = Dealmaster;
+                        sourceTree = "<group>";
+                };
+                2DF8C84E2B6F525500D1E4AA /* Speech */ = {
+                        isa = PBXGroup;
+                        children = (
+                                2DF8C84F2B6F525500D1E4AA /* SpeechModule.swift */,
+                        );
+                        path = "../Speech";
+                        sourceTree = "<group>";
+                };
 		2D16E6871FA4F8E400B85C8A /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
@@ -424,17 +421,16 @@ sourceTree = "<group>";
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-13B07F871A680F5B00A75B9A /* Sources */ = {
-isa = PBXSourcesBuildPhase;
-buildActionMask = 2147483647;
-files = (
-2DF8C8522B6F525500D1E4AA /* SpeechModuleBridge.m in Sources */,
-2DF8C8532B6F525500D1E4AA /* SpeechModule.swift in Sources */,
-13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
-13B07FC11A68108700A75B9A /* main.m in Sources */,
-);
-runOnlyForDeploymentPostprocessing = 0;
-};
+                13B07F871A680F5B00A75B9A /* Sources */ = {
+                        isa = PBXSourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                                2DF8C8532B6F525500D1E4AA /* SpeechModule.swift in Sources */,
+                                13B07FBC1A68108700A75B9A /* AppDelegate.mm in Sources */,
+                                13B07FC11A68108700A75B9A /* main.m in Sources */,
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
