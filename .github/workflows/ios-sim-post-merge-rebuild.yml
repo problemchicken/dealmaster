@@ -1,0 +1,72 @@
+name: iOS Simulator — Post-merge rebuild
+
+on:
+  push:
+    branches: [ main ]
+
+concurrency:
+  group: ios-post-merge-rebuild
+  cancel-in-progress: true
+
+jobs:
+  build-simulator:
+    runs-on: macos-14
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Xcode Select (latest)
+        run: sudo xcode-select -s /Applications/Xcode.app/Contents/Developer
+
+      - name: Node & NPM cache
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install JS deps
+        run: npm ci
+
+      - name: Cache CocoaPods
+        uses: actions/cache@v4
+        with:
+          path: |
+            ios/Pods
+            ~/Library/Caches/CocoaPods
+            ~/.cocoapods
+          key: ${{ runner.os }}-pods-${{ hashFiles('ios/Podfile.lock') }}
+
+      - name: Pod install
+        working-directory: ios
+        run: |
+          gem install cocoapods --no-document
+          pod repo update --silent
+          pod install
+
+      - name: Clean DerivedData
+        run: rm -rf ~/Library/Developer/Xcode/DerivedData/*
+
+      - name: Build (iOS Simulator)
+        env:
+          IPHONEOS_DEPLOYMENT_TARGET: '12.4'
+        run: |
+          set -e
+          WS=${WS:-$(ls -1 *.xcworkspace | head -n1)}
+          SCHEME=${SCHEME:-Dealmaster}
+          DEST="platform=iOS Simulator,name=iPhone 17 Pro,OS=latest"
+          xcodebuild -workspace "$WS" -scheme "$SCHEME" -configuration Debug \
+            -sdk iphonesimulator -destination "$DEST" clean build \
+            -allowProvisioningUpdates -derivedDataPath ./DerivedData \
+            | xcpretty -r junit --output build-report.xml
+        shell: bash
+
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios-sim-build-artifacts
+          path: |
+            build-report.xml
+            DerivedData/Logs/Build
