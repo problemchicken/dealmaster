@@ -1,0 +1,26 @@
+name: iOS Simulator — PR build check
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      - run: |
+          cd ios
+          pod install
+          cd ..
+      - run: |
+          xcodebuild -workspace ios/Dealmaster.xcworkspace \
+            -scheme Dealmaster -sdk iphonesimulator \
+            -destination "platform=iOS Simulator,name=iPhone 17 Pro" \
+            clean build
