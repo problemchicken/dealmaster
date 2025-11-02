@@ -21,6 +21,8 @@ jobs:
           cd ..
       - run: |
           xcodebuild -workspace ios/Dealmaster.xcworkspace \
-            -scheme Dealmaster -sdk iphonesimulator \
+            -scheme Dealmaster \
+            -sdk iphonesimulator \
+            -configuration CI \
             -destination "platform=iOS Simulator,name=iPhone 17 Pro" \
             clean build
